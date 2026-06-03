@@ -22,9 +22,6 @@ class Member(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     membership_type = db.Column(db.String(50), nullable=False)
     
-class staff (db.Model):
-    __tablename__ = 'staff'
-    id 
 
 @app.route('/')
 def login():
