@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POWER GYM — Sign In</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tr-styles.css') }}">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: LOGIN (Unified for all roles)
+═══════════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="login-box">
+
+    <div class="login-header">
+      <div class="login-logo">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym Logo"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+        <div style="display:none;font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:4px;
+                    background:linear-gradient(90deg,var(--red) 0 60%,var(--white) 60% 100%);
+                    -webkit-background-clip:text;background-clip:text;color:transparent;">POWER GYM</div>
+      </div>
+      <div class="login-role-tag" id="login-role-tag" style="min-height:18px;">&nbsp;</div>
+      <div class="login-title">SIGN IN</div>
+    </div>
+
+    <!-- Announcements panel -->
+    <div class="panel announcement-panel">
+      <div class="panel-header"><div class="panel-title">📢 ANNOUNCEMENTS</div></div>
+      <div class="panel-body">
+        TO ALL MEMBERS STARTING JULY 2025 — EVERYONE IS REQUIRED TO WEAR PROPER GYM ATTIRE
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Email Address</label>
+      <input class="form-input" type="email" placeholder="your@email.com"
+             id="login-email" oninput="detectRoleHint()">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input class="form-input" type="password" placeholder="••••••••"
+             id="login-pass" onkeydown="if(event.key==='Enter')handleLogin()">
+    </div>
+
+    <!-- Role hint bar (auto-populated) -->
+    <div id="role-hint-bar" style="display:none;"></div>
+
+    <button class="btn-primary" onclick="handleLogin()">ACCESS SYSTEM</button>
+
+    <div style="margin-top:18px;text-align:center;font-size:13px;color:var(--muted);">
+      Not a member? <span class="link-btn" onclick="goTo('register')">Register here</span>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SCREEN: REGISTER (Member self-registration)
+═══════════════════════════════════════ -->
+<div id="screen-register" class="screen">
+  <div class="register-box">
+
+    <button class="back-btn" onclick="goTo('login')">← BACK TO LOGIN</button>
+    <div class="login-role-tag">NEW MEMBER REGISTRATION</div>
+    <div class="login-title" style="margin-bottom:28px;">JOIN POWER GYM</div>
+
+    <!-- Step progress indicator -->
+    <div class="step-indicator">
+      <div class="step-dot active" id="sdot-1"></div>
+      <div class="step-dot"        id="sdot-2"></div>
+      <div class="step-dot"        id="sdot-3"></div>
+      <div class="step-dot"        id="sdot-4"></div>
+    </div>
+
+    <!-- STEP 1: Personal Info -->
+    <div id="reg-step-1">
+      <div class="panel-title" style="margin-bottom:20px;">Personal Information</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name</label>
+          <input class="form-input" id="reg-fname" placeholder="Juan">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <input class="form-input" id="reg-lname" placeholder="Dela Cruz">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" type="email" id="reg-email" placeholder="juan@email.com">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input class="form-input" id="reg-phone" placeholder="+63 9xx xxx xxxx">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Birthday</label>
+          <input class="form-input" type="date" id="reg-bday">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" id="reg-pass" placeholder="Minimum 8 characters">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm Password</label>
+        <input class="form-input" type="password" id="reg-confirm" placeholder="Re-enter your password">
+      </div>
+      <button class="btn-primary" onclick="regNext(2)">CONTINUE →</button>
+    </div>
+
+    <!-- STEP 2: Plan Selection -->
+    <div id="reg-step-2" style="display:none;">
+      <div class="panel-title" style="margin-bottom:16px;">Select Membership Plan</div>
+      <div class="plan-grid">
+        <div class="plan-card" onclick="selectPlan(this,'daily')">
+          <div class="plan-name">Daily</div>
+          <div class="plan-price">₱80</div>
+          <div class="plan-period">Per day access</div>
+        </div>
+        <div class="plan-card" onclick="selectPlan(this,'monthly')">
+          <div class="plan-name">Monthly</div>
+          <div class="plan-price">₱999</div>
+          <div class="plan-period">30-day validity</div>
+        </div>
+        <div class="plan-card" onclick="selectPlan(this,'quarterly')">
+          <div class="plan-name">Quarterly</div>
+          <div class="plan-price">₱2,499</div>
+          <div class="plan-period">90-day validity</div>
+        </div>
+        <div class="plan-card" onclick="selectPlan(this,'annual')">
+          <div class="plan-name">Annual ⭐</div>
+          <div class="plan-price">₱7,999</div>
+          <div class="plan-period">365-day validity</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:24px;">
+        <button class="btn btn-outline" onclick="regNext(1)">← BACK</button>
+        <button class="btn btn-red" style="flex:1;" onclick="regNext(3)">CONTINUE →</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Terms & Policy -->
+    <div id="reg-step-3" style="display:none;">
+      <div class="panel-title" style="margin-bottom:16px;">Terms &amp; Policy</div>
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-body" style="font-size:13px;color:var(--muted);line-height:1.7;max-height:190px;overflow:auto;">
+          <p><strong>FITNESS AREA RULES:</strong></p>
+          <p>• Use facilities and equipment at your own risk.</p>
+          <p>• Use equipment properly and follow directions carefully.</p>
+          <p>• Do not lean on the equipment. Keep hands away from moving parts.</p>
+          <p>• Consult a physician before beginning an exercise program.</p>
+          <p>• No food or drinks (except water). No smoking.</p>
+          <p>• Children under 18 must be accompanied by an adult.</p>
+          <p>• Proper fitness attire is required. No boots, street shoes, sandals or bare feet.</p>
+          <p>• Report any damaged equipment to management immediately. DO NOT USE.</p>
+          <p>• Always be courteous and respectful of others.</p>
+          <p>• Please return all equipment to its place and wipe down machines after use.</p>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--white);cursor:pointer;">
+          <input type="checkbox" id="reg-terms-check" style="margin-top:3px;">
+          <span>I have read and agree to the Terms &amp; Policy.</span>
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:24px;">
+        <button class="btn btn-outline" onclick="regNext(2)">← BACK</button>
+        <button class="btn btn-red" style="flex:1;" onclick="proceedToPayment()">CONTINUE TO PAYMENT →</button>
+      </div>
+    </div>
+
+    <!-- STEP 4: Payment -->
+    <div id="reg-step-4" style="display:none;">
+      <div class="panel-title" style="margin-bottom:16px;">Payment Method</div>
+      <div class="payment-opts">
+        <div class="pay-opt" onclick="selectPayment(this,'gcash')">
+          <span class="pay-icon">📱</span>GCash / PayMaya
+        </div>
+        <div class="pay-opt" onclick="selectPayment(this,'cash')">
+          <span class="pay-icon">💵</span>Cash at Gym
+        </div>
+      </div>
+      <div id="pay-upload" style="display:none;margin-top:16px;">
+        <div class="upload-zone" onclick="showToast('File picker would open here','success')">
+          <span class="upload-icon">📤</span>
+          Upload Proof of Payment<br>
+          <span style="font-size:11px;">PNG, JPG, PDF up to 10MB</span>
+        </div>
+      </div>
+      <div id="pay-cash-note" style="display:none;margin-top:16px;padding:14px;
+           background:rgba(245,197,24,0.08);border:1px solid rgba(245,197,24,0.2);
+           border-radius:6px;font-size:13px;color:var(--gold);">
+        💡 Please pay at the front desk. Staff will record your payment.
+      </div>
+      <div style="display:flex;gap:10px;margin-top:24px;">
+        <button class="btn btn-outline" onclick="regNext(3)">← BACK</button>
+        <button class="btn btn-red" style="flex:1;" onclick="completeRegistration()">SUBMIT REGISTRATION</button>
+      </div>
+    </div>
+
+  </div>
+</div><!-- /screen-register -->
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="{{ url_for('static', filename='js/tr-script.js') }}"></script>
+</body>
+</html>

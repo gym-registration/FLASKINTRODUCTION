@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POWER GYM — Member Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tr-styles.css') }}">
+</head>
+<body>
+
+<!--
+  ═══════════════════════════════════════
+  MEMBER DASHBOARD
+  Access: member role only
+  Guard: Session.guardDashboard() in JS
+  ═══════════════════════════════════════
+-->
+
+<!-- Root element used by JS to detect this page -->
+<div id="member-dashboard-root" class="dashboard-layout">
+
+  <!-- ── SIDEBAR ─────────────────────── -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <span class="sidebar-logo-text" style="display:none;">POWER GYM</span>
+    </div>
+
+    <div class="sidebar-role">💪 Member</div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-item" id="nav-member-overview"    onclick="memberTab('overview',this)">
+        <span class="nav-icon">🏠</span> Overview
+      </div>
+      <div class="nav-item" id="nav-member-membership"  onclick="memberTab('membership',this)">
+        <span class="nav-icon">🎫</span> My Membership
+      </div>
+      <div class="nav-item" id="nav-member-attendance"  onclick="memberTab('attendance',this)">
+        <span class="nav-icon">📅</span> My Attendance
+      </div>
+      <div class="nav-item" id="nav-member-goals"       onclick="memberTab('goals',this)">
+        <span class="nav-icon">🎯</span> Body Goals
+      </div>
+      <div class="nav-item" id="nav-member-services"    onclick="memberTab('services',this)">
+        <span class="nav-icon">🏋️</span> Services
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-user-avatar" style="background:var(--green);color:#000;">MS</div>
+        <div>
+          <div class="user-name"  id="sidebar-user-name">Member</div>
+          <div class="user-email" id="sidebar-user-email">member@email.com</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="doLogout()">⏻ SIGN OUT</button>
+    </div>
+  </div><!-- /sidebar -->
+
+  <!-- ── MAIN CONTENT ─────────────────── -->
+  <div class="main-content">
+
+    <!-- ── Member Overview ──────────────── -->
+    <div id="member-overview" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">MEMBER PORTAL</div><div class="page-subtitle">Welcome back — keep pushing!</div></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:20px;">
+        <!-- Digital membership card -->
+        <div class="member-card-display">
+          <div class="card-logo">
+            <img src="assets/loho.png" alt="Power Gym" style="width:80px;height:auto;"
+                 onerror="this.outerHTML='<span style=\'font-family:Bebas Neue,sans-serif;font-size:16px;letter-spacing:3px;color:var(--red);\'>POWER GYM</span>'">
+          </div>
+          <div class="card-name" id="member-card-name">Maria Santos</div>
+          <div class="card-id">MBR-1001 · maria@email.com</div>
+          <div class="card-plan">Monthly</div>
+          <div class="card-expiry">Valid until: May 10, 2026</div>
+        </div>
+
+        <!-- Quick stats -->
+        <div class="panel" style="margin-bottom:0;">
+          <div class="panel-header"><div class="panel-title">Quick Stats</div></div>
+          <div class="panel-body">
+            <div class="goal-item">
+              <div class="goal-header"><span>Attendance Rate</span><span style="color:var(--green);font-weight:700;">85%</span></div>
+              <div class="progress-bar"><div class="progress-fill green" style="width:85%"></div></div>
+            </div>
+            <div class="goal-item">
+              <div class="goal-header"><span>Weight Goal</span><span style="color:var(--red);font-weight:700;">64/60kg</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:60%"></div></div>
+            </div>
+            <div class="goal-item">
+              <div class="goal-header"><span>Membership Used</span><span style="font-weight:700;">0/30 days</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Announcements for member -->
+      <div class="panel announcement-panel">
+        <div class="panel-header"><div class="panel-title">📢 GYM ANNOUNCEMENTS</div></div>
+        <div class="panel-body">
+          TO ALL MEMBERS STARTING JULY 2025 — EVERYONE IS REQUIRED TO WEAR PROPER GYM ATTIRE
+        </div>
+      </div>
+    </div><!-- /member-overview -->
+
+    <!-- ── My Membership ────────────────── -->
+    <div id="member-membership" class="sub-panel">
+      <div class="page-header"><div><div class="page-title">MY MEMBERSHIP</div></div></div>
+      <div class="grid-2">
+        <!-- Current plan details -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">Current Plan</div></div>
+          <div class="panel-body">
+            <div style="font-family:'Bebas Neue';font-size:36px;color:var(--red);margin-bottom:4px;">MONTHLY</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">₱999 / month</div>
+            <div class="goal-item"><div class="goal-header"><span>Start Date</span><span>April 10, 2026</span></div></div>
+            <div class="goal-item"><div class="goal-header"><span>Expiry Date</span><span>May 10, 2026</span></div></div>
+            <div class="goal-item"><div class="goal-header"><span>Days Left</span><span style="color:var(--green);font-weight:700;">30 days</span></div></div>
+            <div class="progress-bar" style="margin-top:16px;"><div class="progress-fill" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <!-- Upgrade / Renew -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">Upgrade / Renew</div></div>
+          <div class="panel-body">
+            <div class="plan-grid">
+              <div class="plan-card" onclick="selectPlan(this,'monthly')">
+                <div class="plan-name">Monthly</div><div class="plan-price">₱999</div>
+              </div>
+              <div class="plan-card" onclick="selectPlan(this,'quarterly')">
+                <div class="plan-name">Quarterly</div><div class="plan-price">₱2,499</div>
+              </div>
+              <div class="plan-card" onclick="selectPlan(this,'annual')">
+                <div class="plan-name">Annual ⭐</div><div class="plan-price">₱7,999</div>
+              </div>
+            </div>
+
+            <!-- Payment proof upload -->
+            <div class="proof-upload-box">
+              <div class="form-group">
+                <label class="form-label">Choose Payment Method</label>
+                <select class="form-input" id="member-renew-method">
+                  <option value="">Select method...</option>
+                  <option value="GCash">GCash</option>
+                  <option value="PayMaya">PayMaya</option>
+                  <option value="Cash">Cash</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Reference Number</label>
+                <input class="form-input" id="member-renew-ref" placeholder="e.g. GC-123456">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Upload Screenshot Proof</label>
+                <input class="form-input" type="file" id="member-renew-proof" accept="image/*"
+                       onchange="previewRenewProof(this)">
+              </div>
+              <img id="member-renew-preview" class="proof-preview" alt="Payment proof preview" style="display:none;">
+              <button class="btn btn-red" style="margin-top:16px;width:100%;" onclick="submitRenewalPayment()">
+                SUBMIT RENEWAL PAYMENT
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /member-membership -->
+
+    <!-- ── My Attendance ────────────────── -->
+    <div id="member-attendance" class="sub-panel">
+      <div class="page-header"><div><div class="page-title">MY ATTENDANCE</div><div class="page-subtitle">April 2026</div></div></div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Attendance Calendar</div></div>
+        <div class="panel-body"><div class="att-grid" id="att-grid-member"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Session History</div></div>
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Check-in</th><th>Check-out</th><th>Duration</th></tr></thead>
+          <tbody>
+            <tr><td>Apr 10, 2026</td><td>6:02 AM</td><td>7:45 AM</td><td>1h 43m</td></tr>
+            <tr><td>Apr 9, 2026</td> <td>6:15 AM</td><td>7:50 AM</td><td>1h 35m</td></tr>
+            <tr><td>Apr 8, 2026</td> <td>5:45 AM</td><td>7:10 AM</td><td>1h 25m</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /member-attendance -->
+
+    <!-- ── Body Goals ───────────────────── -->
+    <div id="member-goals" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">TRACK BODY GOALS</div></div>
+        <button class="btn btn-red" onclick="openModal('goals-modal')">+ UPDATE GOALS</button>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">Current Measurements</div></div>
+          <div class="panel-body">
+            <div class="goal-item">
+              <div class="goal-header"><span class="goal-label">Weight</span><span class="goal-val red">64 kg</span></div>
+              <div style="font-size:11px;color:var(--muted);">Goal: 60 kg</div>
+              <div class="progress-bar"><div class="progress-fill green" style="width:72%"></div></div>
+            </div>
+            <div class="goal-item">
+              <div class="goal-header"><span class="goal-label">Body Fat %</span><span class="goal-val red">22%</span></div>
+              <div style="font-size:11px;color:var(--muted);">Goal: 18%</div>
+              <div class="progress-bar"><div class="progress-fill" style="width:40%"></div></div>
+            </div>
+            <div class="goal-item">
+              <div class="goal-header"><span class="goal-label">Muscle Mass</span><span class="goal-val green">48 kg</span></div>
+              <div style="font-size:11px;color:var(--muted);">Goal: 52 kg</div>
+              <div class="progress-bar"><div class="progress-fill green" style="width:65%"></div></div>
+            </div>
+            <div class="goal-item">
+              <div class="goal-header"><span class="goal-label">BMI</span><span class="goal-val red">24.2</span></div>
+              <div style="font-size:11px;color:var(--muted);">Normal range: 18.5–24.9</div>
+              <div class="progress-bar"><div class="progress-fill green" style="width:88%"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">Monthly Progress</div></div>
+          <div class="panel-body">
+            <div style="text-align:center;padding:20px 0;">
+              <div style="font-family:'Bebas Neue';font-size:64px;color:var(--green);line-height:1;">-1.2</div>
+              <div style="font-size:14px;color:var(--muted);">kg lost this month</div>
+              <div style="margin-top:24px;font-size:13px;color:var(--muted);">Keep going! You're 4 kg away from your goal.</div>
+              <div style="margin-top:16px;"><span class="badge badge-green">On Track ✓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /member-goals -->
+
+    <!-- ── Services ─────────────────────── -->
+    <div id="member-services" class="sub-panel">
+      <div class="page-header"><div><div class="page-title">GYM SERVICES</div></div></div>
+      <div class="grid-3">
+        <div class="panel">
+          <div class="panel-body" style="text-align:center;padding:28px 16px;">
+            <div style="font-size:36px;margin-bottom:10px;">🏋️</div>
+            <div class="panel-title">Free Weights</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Dumbbells, barbells, plates</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-body" style="text-align:center;padding:28px 16px;">
+            <div style="font-size:36px;margin-bottom:10px;">🚴</div>
+            <div class="panel-title">Cardio Zone</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Bikes, treadmills, rowing</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-body" style="text-align:center;padding:28px 16px;">
+            <div style="font-size:36px;margin-bottom:10px;">🥊</div>
+            <div class="panel-title">Boxing</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Gloves, punching bags, sparring</div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /member-services -->
+
+  </div><!-- /main-content -->
+</div><!-- /member-dashboard-root -->
+
+
+<!-- ══════════════════════════════════
+     MODALS
+══════════════════════════════════ -->
+<div class="modal-overlay" id="goals-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('goals-modal')">✕</button>
+    <div class="modal-title">UPDATE BODY GOALS</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Current Weight (kg)</label><input class="form-input" value="64"></div>
+      <div class="form-group"><label class="form-label">Goal Weight (kg)</label>   <input class="form-input" value="60"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Body Fat %</label>        <input class="form-input" value="22"></div>
+      <div class="form-group"><label class="form-label">Muscle Mass (kg)</label>  <input class="form-input" value="48"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notes</label><input class="form-input" placeholder="e.g. Focus on cardio this week"></div>
+    <button class="btn btn-red" style="width:100%;margin-top:8px;"
+            onclick="closeModal('goals-modal');showToast('Body goals updated!','success')">SAVE GOALS</button>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="{{ url_for('static', filename='js/tr-script.js') }}"></script>
+</body>
+</html>

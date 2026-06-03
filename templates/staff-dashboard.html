@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POWER GYM — Staff Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tr-styles.css') }}">
+</head>
+<body>
+
+<!--
+  ═══════════════════════════════════════
+  STAFF DASHBOARD
+  Access: staff role only
+  Guard: Session.guardDashboard() in JS
+  ═══════════════════════════════════════
+-->
+
+<!-- Root element used by JS to detect this page -->
+<div id="staff-dashboard-root" class="dashboard-layout">
+
+  <!-- ── SIDEBAR ─────────────────────── -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+      <span class="sidebar-logo-text" style="display:none;">POWER GYM</span>
+    </div>
+
+    <div class="sidebar-role">👥 Staff Member</div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-item" id="nav-staff-overview" onclick="staffTab('overview',this)">
+        <span class="nav-icon">📊</span> Overview
+      </div>
+      <div class="nav-item" id="nav-staff-checkin" onclick="staffTab('checkin',this)">
+        <span class="nav-icon">✅</span> Check-in / Out
+      </div>
+      <div class="nav-item" id="nav-staff-members" onclick="staffTab('members',this)">
+        <span class="nav-icon">👥</span> View Members
+      </div>
+      <div class="nav-item" id="nav-staff-payments" onclick="staffTab('payments',this)">
+        <span class="nav-icon">💳</span> Record Payment
+      </div>
+      <div class="nav-item" id="nav-staff-notices" onclick="staffTab('notices',this)">
+        <span class="nav-icon">📢</span> Notices
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-user-avatar" style="background:var(--blue);">SF</div>
+        <div>
+          <div class="user-name"  id="sidebar-user-name">Staff Member</div>
+          <div class="user-email" id="sidebar-user-email">staff@powergym.com</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="doLogout()">⏻ SIGN OUT</button>
+    </div>
+  </div><!-- /sidebar -->
+
+  <!-- ── MAIN CONTENT ─────────────────── -->
+  <div class="main-content">
+
+    <!-- ── Staff Overview ───────────────── -->
+    <div id="staff-overview" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">STAFF DASHBOARD</div><div class="page-subtitle">Today's operations at a glance</div></div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card blue"> <span class="stat-icon">✅</span><div class="stat-value">67</div> <div class="stat-label">Check-ins Today</div></div>
+        <div class="stat-card green"><span class="stat-icon">👥</span><div class="stat-value">193</div><div class="stat-label">Active Members</div></div>
+        <div class="stat-card gold"> <span class="stat-icon">⏳</span><div class="stat-value">3</div>  <div class="stat-label">Pending Payments</div></div>
+        <div class="stat-card red">  <span class="stat-icon">⚠️</span><div class="stat-value">14</div> <div class="stat-label">Expiring Soon</div></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Quick Check-in widget -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">Quick Check-in</div></div>
+          <div class="panel-body">
+            <div class="form-group">
+              <label class="form-label">Member ID or Email</label>
+              <input class="form-input" placeholder="Search member..." id="staff-checkin-quick">
+            </div>
+            <div style="display:flex;gap:10px;">
+              <button class="btn btn-green"  style="flex:1;" onclick="showToast('Check-in recorded!','success')">✓ CHECK IN</button>
+              <button class="btn btn-outline" style="flex:1;" onclick="showToast('Check-out recorded!','success')">← CHECK OUT</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent check-ins -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">Recent Check-ins</div></div>
+          <table class="data-table">
+            <thead><tr><th>Member</th><th>Time</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Maria Santos</td><td>6:02 AM</td><td><span class="badge badge-green">In</span></td></tr>
+              <tr><td>Jose Reyes</td>  <td>6:15 AM</td><td><span class="badge badge-green">In</span></td></tr>
+              <tr><td>Ana Cruz</td>    <td>5:45 AM</td><td><span class="badge badge-muted">Out</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Expiring members alert -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Members Expiring This Week</div></div>
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Plan</th><th>Expiry</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td>Maria Santos</td><td>Monthly</td><td>May 10, 2026</td><td><button class="btn btn-sm btn-outline" onclick="showToast('Renewal reminder sent','success')">Send Reminder</button></td></tr>
+            <tr><td>Pia Magno</td>   <td>Monthly</td><td>May 12, 2026</td><td><button class="btn btn-sm btn-outline" onclick="showToast('Renewal reminder sent','success')">Send Reminder</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /staff-overview -->
+
+    <!-- ── Check-in / Out ───────────────── -->
+    <div id="staff-checkin" class="sub-panel">
+      <div class="page-header"><div><div class="page-title">CHECK-IN / OUT</div><div class="page-subtitle">Record member entry and exit</div></div></div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Log Attendance</div></div>
+        <div class="panel-body">
+          <div class="form-group">
+            <label class="form-label">Member ID or Email</label>
+            <input class="form-input" placeholder="Enter member ID or email...">
+          </div>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-green"  style="flex:1;" onclick="showToast('Check-in recorded!','success')">✓ CHECK IN</button>
+            <button class="btn btn-outline" style="flex:1;" onclick="showToast('Check-out recorded!','success')">← CHECK OUT</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Today's Log</div></div>
+        <table class="data-table">
+          <thead><tr><th>Member</th><th>Check-in</th><th>Check-out</th><th>Duration</th></tr></thead>
+          <tbody>
+            <tr><td>Maria Santos</td><td>6:02 AM</td><td>7:45 AM</td><td>1h 43m</td></tr>
+            <tr><td>Jose Reyes</td>  <td>6:15 AM</td><td>7:50 AM</td><td>1h 35m</td></tr>
+            <tr><td>Ana Cruz</td>    <td>5:45 AM</td><td>7:10 AM</td><td>1h 25m</td></tr>
+            <tr><td>Pia Magno</td>   <td>7:00 AM</td><td>—</td>      <td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /staff-checkin -->
+
+    <!-- ── View Members ─────────────────── -->
+    <div id="staff-members" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">MEMBER DIRECTORY</div><div class="page-subtitle">View-only access</div></div>
+        <input class="search-input" placeholder="Search members...">
+      </div>
+      <div class="panel">
+        <table class="data-table">
+          <thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Expiry</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>#1001</td><td>Maria Santos</td>   <td>Monthly</td>  <td>May 10, 2026</td><td><span class="badge badge-green">Active</span></td></tr>
+            <tr><td>#1002</td><td>Jose Reyes</td>     <td>Annual</td>   <td>Apr 10, 2027</td><td><span class="badge badge-green">Active</span></td></tr>
+            <tr><td>#1003</td><td>Ana Cruz</td>       <td>Daily</td>    <td>Apr 10, 2026</td><td><span class="badge badge-blue">Pending</span></td></tr>
+            <tr><td>#1004</td><td>Carlo Dela Rosa</td><td>Quarterly</td><td>Jan 5, 2026</td> <td><span class="badge badge-red">Expired</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /staff-members -->
+
+    <!-- ── Record Payment ───────────────── -->
+    <div id="staff-payments" class="sub-panel">
+      <div class="page-header"><div><div class="page-title">RECORD PAYMENT</div><div class="page-subtitle">Log cash payments at the front desk</div></div></div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">New Payment Entry</div></div>
+        <div class="panel-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Member Name / ID</label>
+              <input class="form-input" placeholder="e.g. Maria Santos or #1001">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Plan</label>
+              <select class="form-input">
+                <option>Monthly — ₱999</option>
+                <option>Quarterly — ₱2,499</option>
+                <option>Annual — ₱7,999</option>
+                <option>Daily — ₱80</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Payment Method</label>
+              <select class="form-input"><option>Cash</option><option>GCash</option><option>PayMaya</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Reference / Notes</label>
+              <input class="form-input" placeholder="Optional">
+            </div>
+          </div>
+          <button class="btn btn-red" onclick="showToast('Payment recorded successfully!','success')">RECORD PAYMENT</button>
+        </div>
+      </div>
+    </div><!-- /staff-payments -->
+
+    <!-- ── Notices ──────────────────────── -->
+    <div id="staff-notices" class="sub-panel">
+      <div class="page-header"><div><div class="page-title">NOTICES</div><div class="page-subtitle">Announcements from admin</div></div></div>
+      <div class="panel">
+        <div class="panel notice-panel" style="margin-bottom:0;">
+          <div class="panel-header"><div class="panel-title">📢 Active Notices</div></div>
+          <div class="panel-body">
+            <div style="margin-bottom:12px;">
+              <div style="font-weight:600;margin-bottom:4px;color:var(--gold);">Gym Attire Policy</div>
+              <div style="font-size:13px;color:var(--white);">Starting July 2025 — all members must wear proper gym attire.</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">Posted by Admin</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /staff-notices -->
+
+  </div><!-- /main-content -->
+</div><!-- /staff-dashboard-root -->
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="{{ url_for('static', filename='js/tr-script.js') }}"></script>
+</body>
+</html>
