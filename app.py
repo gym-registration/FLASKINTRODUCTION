@@ -11,17 +11,57 @@ db = SQLAlchemy(app)
 
 class User(db.Model):
     __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    first_name = db.Column(db.String(80), nullable=False)
+    last_name = db.Column(db.String(80), nullable=False)
+    email = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    phone = db.Column(db.String(20), nullable=True)
+    birthday = db.Column(db.Date, nullable=True)
     username = db.Column(db.VARCHAR(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False)
 
-class Member(db.Model):
+class MembershipPlan(db.Model):
+    __tablename__ = 'membership_plans'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+
+class Membership(db.Model):
     __tablename__ = 'members'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     membership_type = db.Column(db.String(50), nullable=False)
     
+class Payment(db.Model):
+    __tablename__ = 'payment'
+    id = db.Column(db.Integer, primary_key=True)
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    payment_date = db.Column(db.DateTime, nullable=False)
+
+class Attendance(db.Model):
+    __tablename__ = 'attendance'
+    id = db.Column(db.Integer, primary_key=True)
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=False)
+    check_in_time = db.Column(db.DateTime, nullable=False)
+    check_out_time = db.Column(db.DateTime)
+
+class BodyGoal(db.Model):
+    __tablename__ = 'body_goals'
+    id = db.Column(db.Integer, primary_key=True)
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=False)
+    goal_description = db.Column(db.String(255), nullable=False)
+
+class Announcement(db.Model):
+    __tablename__ = 'announcements'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False)
+
+
+
 
 @app.route('/')
 def login():
