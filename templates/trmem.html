@@ -35,22 +35,34 @@
       </div>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Email Address</label>
-      <input class="form-input" type="email" placeholder="your@email.com"
-             id="login-email" oninput="detectRoleHint()">
-    </div>
+    <form action="{{ url_for('login') }}" method="post" class="login-form">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
 
-    <div class="form-group">
-      <label class="form-label">Password</label>
-      <input class="form-input" type="password" placeholder="••••••••"
-             id="login-pass" onkeydown="if(event.key==='Enter')handleLogin()">
-    </div>
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input class="form-input" type="email" placeholder="your@email.com"
+               id="login-email" name="email" value="{{ request.form.get('email', '') }}" oninput="detectRoleHint()">
+      </div>
 
-    <!-- Role hint bar (auto-populated) -->
-    <div id="role-hint-bar" style="display:none;"></div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" placeholder="••••••••"
+               id="login-pass" name="password">
+      </div>
 
-    <button class="btn-primary" onclick="handleLogin()">ACCESS SYSTEM</button>
+      <!-- Role hint bar (auto-populated) -->
+      <div id="role-hint-bar" style="display:none;"></div>
+
+      <button class="btn-primary" type="submit">ACCESS SYSTEM</button>
+    </form>
 
     <div style="margin-top:18px;text-align:center;font-size:13px;color:var(--muted);">
       Not a member? <span class="link-btn" onclick="goTo('register')">Register here</span>

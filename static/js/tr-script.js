@@ -133,29 +133,21 @@ const Session = (() => {
    * Returns the session if valid, null otherwise.
    */
   function guardDashboard() {
-    const session = Auth.getSession();
-    const filename = window.location.pathname.split('/').pop();
-    const required = DASHBOARD_ROLES[filename];
-
-    if (!session) {
-      redirectToLogin();
-      return null;
-    }
-    if (required && session.role !== required) {
-      // Wrong dashboard for this role — send to correct one
-      redirectToRole(session.role);
-      return null;
-    }
-    return session;
+    // Flask handles authentication server-side.
+    // Just read sidebar elements already rendered by Jinja and return a session-like object.
+    const name     = document.getElementById('sidebar-user-name')?.textContent  || '';
+    const email    = document.getElementById('sidebar-user-email')?.textContent || '';
+    const initials = document.getElementById('sidebar-user-avatar')?.textContent || '';
+    return { name, email, initials };
   }
 
   function redirectToLogin() {
-    window.location.href = 'trmem.html';
+    window.location.href = '/login';
   }
 
   function redirectToRole(role) {
-    const map = { admin: 'admin-dashboard.html', staff: 'staff-dashboard.html', member: 'member-dashboard.html' };
-    window.location.href = map[role] || 'trmem.html';
+    const map = { admin: '/admin', staff: '/staff', member: '/member' };
+    window.location.href = map[role] || '/login';
   }
 
   return { guardDashboard, redirectToLogin, redirectToRole };
@@ -586,14 +578,8 @@ const LoginPage = (() => {
   let selectedPayment = null;
 
   function init() {
-    // If already logged in, redirect straight to dashboard
-    const session = Auth.getSession();
-    if (session) {
-      Session.redirectToRole(session.role);
-      return;
-    }
-
-    // Honour ?screen=register URL param
+    // Always show the login/register page first when opening the root URL.
+    // Existing session remains in storage, but we do not automatically redirect.
     const params = new URLSearchParams(window.location.search);
     if (params.get('screen') === 'register') Navigation.goToScreen('register');
 
@@ -761,8 +747,7 @@ function selectPlan(card, plan) {
 
 /** Logout — works from any dashboard page */
 function doLogout() {
-  Auth.logout();
-  window.location.href = 'trmem.html';
+  window.location.href = '/logout';
 }
 
 // ── Private shared helpers (not exported globally) ──
