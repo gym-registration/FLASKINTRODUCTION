@@ -23,9 +23,9 @@
   <!-- ── SIDEBAR ─────────────────────── -->
   <div class="sidebar">
     <div class="sidebar-logo">
-      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <span class="sidebar-logo-text" style="display:none;">POWER GYM</span>
+      <div class="logo-badge">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
+      </div>
     </div>
 
     <div class="sidebar-role">💪 Member</div>
@@ -72,9 +72,8 @@
       <div class="grid-2" style="margin-bottom:20px;">
         <!-- Digital membership card -->
         <div class="member-card-display">
-          <div class="card-logo">
-            <img src="assets/loho.png" alt="Power Gym" style="width:80px;height:auto;"
-                 onerror="this.outerHTML='<span style=\'font-family:Bebas Neue,sans-serif;font-size:16px;letter-spacing:3px;color:var(--red);\'>POWER GYM</span>'">
+          <div class="card-logo logo-badge">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
           </div>
           <div class="card-name" id="member-card-name">Maria Santos</div>
           <div class="card-id">MBR-1001 · maria@email.com</div>
@@ -296,6 +295,7 @@
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="{{ url_for('static', filename='js/tr-script.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-member.js') }}"></script>
 </body>
 </html>

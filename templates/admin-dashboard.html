@@ -23,9 +23,9 @@
   <!-- ── SIDEBAR ─────────────────────── -->
   <div class="sidebar">
     <div class="sidebar-logo">
-      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <span class="sidebar-logo-text" style="display:none;">POWER GYM</span>
+      <div class="logo-badge">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
+      </div>
     </div>
 
     <div class="sidebar-role">🛡️ Administrator</div>
@@ -143,38 +143,28 @@
         <table class="data-table" id="members-table">
           <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
+            {% for m in members %}
             <tr>
-              <td>#1001</td><td>Maria Santos</td><td>maria@email.com</td><td>Monthly</td><td>May 10, 2026</td>
-              <td><span class="badge badge-green">Active</span></td>
+              <td>#{{ m.id }}</td><td>{{ m.name }}</td><td>{{ m.email }}</td><td>{{ m.plan }}</td><td>{{ m.expiry }}</td>
+              <td>
+                {% if m.status == 'Active' %}
+                <span class="badge badge-green">Active</span>
+                {% elif m.status == 'Pending' %}
+                <span class="badge badge-blue">Pending</span>
+                {% elif m.status == 'Expired' %}
+                <span class="badge badge-red">Expired</span>
+                {% else %}
+                <span class="badge badge-muted">No Plan</span>
+                {% endif %}
+              </td>
               <td>
                 <button class="btn btn-sm btn-outline">Edit</button>
                 <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);">Del</button>
               </td>
             </tr>
-            <tr>
-              <td>#1002</td><td>Jose Reyes</td><td>jose@email.com</td><td>Annual</td><td>Apr 10, 2027</td>
-              <td><span class="badge badge-green">Active</span></td>
-              <td>
-                <button class="btn btn-sm btn-outline">Edit</button>
-                <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);">Del</button>
-              </td>
-            </tr>
-            <tr>
-              <td>#1003</td><td>Ana Cruz</td><td>ana@email.com</td><td>Daily</td><td>Apr 10, 2026</td>
-              <td><span class="badge badge-blue">Pending</span></td>
-              <td>
-                <button class="btn btn-sm btn-outline">Edit</button>
-                <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);">Del</button>
-              </td>
-            </tr>
-            <tr>
-              <td>#1004</td><td>Carlo Dela Rosa</td><td>carlo@email.com</td><td>Quarterly</td><td>Jan 5, 2026</td>
-              <td><span class="badge badge-red">Expired</span></td>
-              <td>
-                <button class="btn btn-sm btn-outline">Edit</button>
-                <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);">Del</button>
-              </td>
-            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;color:var(--muted);">No members yet.</td></tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
@@ -357,6 +347,7 @@
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="{{ url_for('static', filename='js/tr-script.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-admin.js') }}"></script>
 </body>
 </html>

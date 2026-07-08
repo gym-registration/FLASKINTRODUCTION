@@ -23,9 +23,9 @@
   <!-- ── SIDEBAR ─────────────────────── -->
   <div class="sidebar">
     <div class="sidebar-logo">
-      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym"
-           onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-      <span class="sidebar-logo-text" style="display:none;">POWER GYM</span>
+      <div class="logo-badge">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
+      </div>
     </div>
 
     <div class="sidebar-role">👥 Staff Member</div>
@@ -70,10 +70,10 @@
       </div>
 
       <div class="stats-grid">
-        <div class="stat-card blue"> <span class="stat-icon">✅</span><div class="stat-value">67</div> <div class="stat-label">Check-ins Today</div></div>
-        <div class="stat-card green"><span class="stat-icon">👥</span><div class="stat-value">193</div><div class="stat-label">Active Members</div></div>
-        <div class="stat-card gold"> <span class="stat-icon">⏳</span><div class="stat-value">3</div>  <div class="stat-label">Pending Payments</div></div>
-        <div class="stat-card red">  <span class="stat-icon">⚠️</span><div class="stat-value">14</div> <div class="stat-label">Expiring Soon</div></div>
+        <div class="stat-card blue"> <span class="stat-icon">✅</span><div class="stat-value">{{ stats.checkins_today }}</div> <div class="stat-label">Check-ins Today</div></div>
+        <div class="stat-card green"><span class="stat-icon">👥</span><div class="stat-value">{{ stats.active_members }}</div><div class="stat-label">Active Members</div></div>
+        <div class="stat-card gold"> <span class="stat-icon">⏳</span><div class="stat-value">{{ stats.pending_payments }}</div>  <div class="stat-label">Pending Payments</div></div>
+        <div class="stat-card red">  <span class="stat-icon">⚠️</span><div class="stat-value">{{ stats.expiring_soon }}</div> <div class="stat-label">Expiring Soon</div></div>
       </div>
 
       <div class="grid-2">
@@ -86,8 +86,8 @@
               <input class="form-input" placeholder="Search member..." id="staff-checkin-quick">
             </div>
             <div style="display:flex;gap:10px;">
-              <button class="btn btn-green"  style="flex:1;" onclick="showToast('Check-in recorded!','success')">✓ CHECK IN</button>
-              <button class="btn btn-outline" style="flex:1;" onclick="showToast('Check-out recorded!','success')">← CHECK OUT</button>
+              <button class="btn btn-green"  style="flex:1;" onclick="checkInMember('staff-checkin-quick')">✓ CHECK IN</button>
+              <button class="btn btn-outline" style="flex:1;" onclick="checkOutMember('staff-checkin-quick')">← CHECK OUT</button>
             </div>
           </div>
         </div>
@@ -98,9 +98,21 @@
           <table class="data-table">
             <thead><tr><th>Member</th><th>Time</th><th>Status</th></tr></thead>
             <tbody>
-              <tr><td>Maria Santos</td><td>6:02 AM</td><td><span class="badge badge-green">In</span></td></tr>
-              <tr><td>Jose Reyes</td>  <td>6:15 AM</td><td><span class="badge badge-green">In</span></td></tr>
-              <tr><td>Ana Cruz</td>    <td>5:45 AM</td><td><span class="badge badge-muted">Out</span></td></tr>
+              {% for a in attendance_today[:5] %}
+              <tr>
+                <td>{{ a.member_name }}</td>
+                <td>{{ a.check_in }}</td>
+                <td>
+                  {% if a.status == 'In' %}
+                  <span class="badge badge-green">In</span>
+                  {% else %}
+                  <span class="badge badge-muted">Out</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" style="text-align:center;color:var(--muted);">No check-ins yet today.</td></tr>
+              {% endfor %}
             </tbody>
           </table>
         </div>
@@ -112,8 +124,14 @@
         <table class="data-table">
           <thead><tr><th>Name</th><th>Plan</th><th>Expiry</th><th>Action</th></tr></thead>
           <tbody>
-            <tr><td>Maria Santos</td><td>Monthly</td><td>May 10, 2026</td><td><button class="btn btn-sm btn-outline" onclick="showToast('Renewal reminder sent','success')">Send Reminder</button></td></tr>
-            <tr><td>Pia Magno</td>   <td>Monthly</td><td>May 12, 2026</td><td><button class="btn btn-sm btn-outline" onclick="showToast('Renewal reminder sent','success')">Send Reminder</button></td></tr>
+            {% for e in expiring_soon %}
+            <tr>
+              <td>{{ e.name }}</td><td>{{ e.plan }}</td><td>{{ e.expiry }}</td>
+              <td><button class="btn btn-sm btn-outline" onclick="showToast('Renewal reminder sent','success')">Send Reminder</button></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" style="text-align:center;color:var(--muted);">No memberships expiring this week.</td></tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
@@ -127,11 +145,11 @@
         <div class="panel-body">
           <div class="form-group">
             <label class="form-label">Member ID or Email</label>
-            <input class="form-input" placeholder="Enter member ID or email...">
+            <input class="form-input" id="staff-checkin-log" placeholder="Enter member ID or email...">
           </div>
           <div style="display:flex;gap:10px;">
-            <button class="btn btn-green"  style="flex:1;" onclick="showToast('Check-in recorded!','success')">✓ CHECK IN</button>
-            <button class="btn btn-outline" style="flex:1;" onclick="showToast('Check-out recorded!','success')">← CHECK OUT</button>
+            <button class="btn btn-green"  style="flex:1;" onclick="checkInMember('staff-checkin-log')">✓ CHECK IN</button>
+            <button class="btn btn-outline" style="flex:1;" onclick="checkOutMember('staff-checkin-log')">← CHECK OUT</button>
           </div>
         </div>
       </div>
@@ -140,10 +158,16 @@
         <table class="data-table">
           <thead><tr><th>Member</th><th>Check-in</th><th>Check-out</th><th>Duration</th></tr></thead>
           <tbody>
-            <tr><td>Maria Santos</td><td>6:02 AM</td><td>7:45 AM</td><td>1h 43m</td></tr>
-            <tr><td>Jose Reyes</td>  <td>6:15 AM</td><td>7:50 AM</td><td>1h 35m</td></tr>
-            <tr><td>Ana Cruz</td>    <td>5:45 AM</td><td>7:10 AM</td><td>1h 25m</td></tr>
-            <tr><td>Pia Magno</td>   <td>7:00 AM</td><td>—</td>      <td>—</td></tr>
+            {% for a in attendance_today %}
+            <tr>
+              <td>{{ a.member_name }}</td>
+              <td>{{ a.check_in }}</td>
+              <td>{{ a.check_out }}</td>
+              <td>{{ a.duration }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" style="text-align:center;color:var(--muted);">No attendance logged yet today.</td></tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
@@ -159,10 +183,24 @@
         <table class="data-table">
           <thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Expiry</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td>#1001</td><td>Maria Santos</td>   <td>Monthly</td>  <td>May 10, 2026</td><td><span class="badge badge-green">Active</span></td></tr>
-            <tr><td>#1002</td><td>Jose Reyes</td>     <td>Annual</td>   <td>Apr 10, 2027</td><td><span class="badge badge-green">Active</span></td></tr>
-            <tr><td>#1003</td><td>Ana Cruz</td>       <td>Daily</td>    <td>Apr 10, 2026</td><td><span class="badge badge-blue">Pending</span></td></tr>
-            <tr><td>#1004</td><td>Carlo Dela Rosa</td><td>Quarterly</td><td>Jan 5, 2026</td> <td><span class="badge badge-red">Expired</span></td></tr>
+            {% for m in members %}
+            <tr>
+              <td>#{{ m.id }}</td><td>{{ m.name }}</td><td>{{ m.plan }}</td><td>{{ m.expiry }}</td>
+              <td>
+                {% if m.status == 'Active' %}
+                <span class="badge badge-green">Active</span>
+                {% elif m.status == 'Pending' %}
+                <span class="badge badge-blue">Pending</span>
+                {% elif m.status == 'Expired' %}
+                <span class="badge badge-red">Expired</span>
+                {% else %}
+                <span class="badge badge-muted">No Plan</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" style="text-align:center;color:var(--muted);">No members yet.</td></tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
@@ -176,12 +214,12 @@
         <div class="panel-body">
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Member Name / ID</label>
-              <input class="form-input" placeholder="e.g. Maria Santos or #1001">
+              <label class="form-label">Member Name / ID / Email</label>
+              <input class="form-input" id="pay-member" placeholder="e.g. Maria Santos, #1001, or email">
             </div>
             <div class="form-group">
               <label class="form-label">Plan</label>
-              <select class="form-input">
+              <select class="form-input" id="pay-plan">
                 <option>Monthly — ₱999</option>
                 <option>Quarterly — ₱2,499</option>
                 <option>Annual — ₱7,999</option>
@@ -192,14 +230,14 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Payment Method</label>
-              <select class="form-input"><option>Cash</option><option>GCash</option><option>PayMaya</option></select>
+              <select class="form-input" id="pay-method"><option>Cash</option><option>GCash</option><option>PayMaya</option></select>
             </div>
             <div class="form-group">
               <label class="form-label">Reference / Notes</label>
-              <input class="form-input" placeholder="Optional">
+              <input class="form-input" id="pay-reference" placeholder="Optional">
             </div>
           </div>
-          <button class="btn btn-red" onclick="showToast('Payment recorded successfully!','success')">RECORD PAYMENT</button>
+          <button class="btn btn-red" onclick="recordPayment()">RECORD PAYMENT</button>
         </div>
       </div>
     </div><!-- /staff-payments -->
@@ -227,6 +265,7 @@
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="{{ url_for('static', filename='js/tr-script.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-staff.js') }}"></script>
 </body>
 </html>

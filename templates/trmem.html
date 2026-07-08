@@ -17,11 +17,9 @@
 
     <div class="login-header">
       <div class="login-logo">
-        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym Logo"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-        <div style="display:none;font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:4px;
-                    background:linear-gradient(90deg,var(--red) 0 60%,var(--white) 60% 100%);
-                    -webkit-background-clip:text;background-clip:text;color:transparent;">POWER GYM</div>
+        <div class="logo-badge">
+          <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
+        </div>
       </div>
       <div class="login-role-tag" id="login-role-tag" style="min-height:18px;">&nbsp;</div>
       <div class="login-title">SIGN IN</div>
@@ -79,6 +77,13 @@
   <div class="register-box">
 
     <button class="back-btn" onclick="goTo('login')">← BACK TO LOGIN</button>
+
+    <div class="login-logo" style="margin-bottom:20px;">
+      <div class="logo-badge">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
+      </div>
+    </div>
+
     <div class="login-role-tag">NEW MEMBER REGISTRATION</div>
     <div class="login-title" style="margin-bottom:28px;">JOIN POWER GYM</div>
 
@@ -224,6 +229,7 @@
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="{{ url_for('static', filename='js/tr-script.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tr-login.js') }}"></script>
 </body>
 </html>
