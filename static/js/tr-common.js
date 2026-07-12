@@ -216,12 +216,13 @@ const Navigation = (() => {
    Functions used across multiple modules / pages.
 ════════════════════════════════════════════════ */
 
-/** Build a 30-day attendance dot grid */
-function buildAttGrid(elId, presentDays) {
+/** Build an attendance dot grid. totalDays defaults to 30 if not given
+ *  (kept for backward compatibility with pages that don't pass it yet). */
+function buildAttGrid(elId, presentDays, totalDays = 30) {
   const el = document.getElementById(elId);
   if (!el) return;
   el.innerHTML = '';
-  for (let d = 1; d <= 30; d++) {
+  for (let d = 1; d <= totalDays; d++) {
     const dot = document.createElement('div');
     dot.className  = 'att-dot ' + (presentDays.includes(d) ? 'present' : 'absent');
     dot.textContent = d;
@@ -249,21 +250,47 @@ function closeModal(id) {
   if (el) el.classList.remove('open');
 }
 
-/** Payment verification (used by admin) */
+/** Payment verification (used by admin) — calls the real backend endpoint */
 function verifyPayment(btn, action) {
-  const card  = btn.closest('.verify-card');
-  const badge = card ? card.querySelector('.badge') : null;
-  if (!badge) return;
-  if (action === 'approve') {
-    badge.className   = 'badge badge-green';
-    badge.textContent = 'Approved ✓';
-    showToast('Payment approved — Membership activated!', 'success');
-  } else {
-    badge.className   = 'badge badge-red';
-    badge.textContent = 'Rejected ✗';
-    showToast('Payment rejected', 'error');
-  }
-  card.querySelectorAll('button').forEach(b => b.remove());
+  const card = btn.closest('.verify-card');
+  if (!card) return;
+
+  const paymentId = card.dataset.paymentId;
+  if (!paymentId) { showToast('Missing payment reference — cannot verify.', 'error'); return; }
+
+  const buttons = card.querySelectorAll('button');
+  buttons.forEach(b => b.disabled = true);
+
+  fetch(`/admin/verify-payment/${paymentId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action })
+  })
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok || !data.success) {
+        showToast(data.error || 'Failed to process payment.', 'error');
+        buttons.forEach(b => b.disabled = false);
+        return;
+      }
+
+      const badge = card.querySelector('.badge');
+      if (badge) {
+        if (data.status === 'verified') {
+          badge.className   = 'badge badge-green';
+          badge.textContent = 'Approved ✓';
+        } else {
+          badge.className   = 'badge badge-red';
+          badge.textContent = 'Rejected ✗';
+        }
+      }
+      buttons.forEach(b => b.remove());
+      showToast(data.message, data.status === 'rejected' ? 'error' : 'success');
+    })
+    .catch(() => {
+      showToast('Could not reach the server. Please try again.', 'error');
+      buttons.forEach(b => b.disabled = false);
+    });
 }
 
 /** Plan card selection (generic — used on register page and member renewal) */

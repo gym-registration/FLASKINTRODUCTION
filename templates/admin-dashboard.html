@@ -91,10 +91,11 @@
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Pending Payment Verifications</div></div>
           <div id="admin-uploaded-proofs" class="panel-body" style="padding:16px;">
-            <div class="verify-card">
+            {% for p in pending_payments[:5] %}
+            <div class="verify-card" data-payment-id="{{ p.id }}">
               <div>
-                <div style="font-weight:600;margin-bottom:4px;">Jose Reyes — Renewal</div>
-                <div style="font-size:12px;color:var(--muted);">GCash · Ref: GC-000821 · Txn: #TXN-9000</div>
+                <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
+                <div style="font-size:12px;color:var(--muted);">{{ p.method }} · Ref: {{ p.reference }} · Txn: #{{ p.txn }} · ₱{{ p.amount }}</div>
                 <div style="margin-top:8px;"><span class="badge badge-blue">Pending</span></div>
               </div>
               <div style="display:flex;gap:8px;">
@@ -102,6 +103,9 @@
                 <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
               </div>
             </div>
+            {% else %}
+            <div style="text-align:center;color:var(--muted);padding:12px 0;">No pending payments to verify.</div>
+            {% endfor %}
           </div>
         </div>
 
@@ -110,20 +114,6 @@
           <div class="panel-header"><div class="panel-title">Attendance (April)</div></div>
           <div class="panel-body"><div class="att-grid" id="att-grid-admin"></div></div>
         </div>
-      </div>
-
-      <!-- Recent activity table -->
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">Recent Member Activity</div></div>
-        <table class="data-table">
-          <thead><tr><th>Member</th><th>Action</th><th>Time</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td>Maria Santos</td>   <td>Check-in</td>    <td>6:02 AM</td>    <td><span class="badge badge-green">Active</span></td></tr>
-            <tr><td>Jose Reyes</td>     <td>Check-in</td>    <td>6:15 AM</td>    <td><span class="badge badge-green">Active</span></td></tr>
-            <tr><td>Ana Cruz</td>       <td>Registration</td><td>Yesterday</td>  <td><span class="badge badge-blue">Pending</span></td></tr>
-            <tr><td>Carlo Dela Rosa</td><td>Plan Expired</td><td>Jan 5, 2026</td><td><span class="badge badge-red">Expired</span></td></tr>
-          </tbody>
-        </table>
       </div>
     </div><!-- /admin-overview -->
 
@@ -144,7 +134,7 @@
           <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {% for m in members %}
-            <tr>
+            <tr data-id="{{ m.id }}" data-plan="{{ m.plan }}" data-phone="{{ m.phone or '' }}" data-expiry-iso="{{ m.expiry_date.isoformat() if m.expiry_date else '' }}">
               <td>#{{ m.id }}</td><td>{{ m.name }}</td><td>{{ m.email }}</td><td>{{ m.plan }}</td><td>{{ m.expiry }}</td>
               <td>
                 {% if m.status == 'Active' %}
@@ -158,8 +148,8 @@
                 {% endif %}
               </td>
               <td>
-                <button class="btn btn-sm btn-outline">Edit</button>
-                <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);">Del</button>
+                <button class="btn btn-sm btn-outline" onclick="openEditMemberModal(this)">Edit</button>
+                <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="deleteMemberRow(this)">Del</button>
               </td>
             </tr>
             {% else %}
@@ -178,10 +168,11 @@
       <div class="panel">
         <div class="panel-header"><div class="panel-title">Pending Verifications</div></div>
         <div class="panel-body">
-          <div class="verify-card">
+          {% for p in pending_payments %}
+          <div class="verify-card" data-payment-id="{{ p.id }}" style="margin-bottom:12px;">
             <div>
-              <div style="font-weight:600;margin-bottom:4px;">Maria Santos — New Registration</div>
-              <div style="font-size:12px;color:var(--muted);">GCash · Ref: GC-778123 · Monthly Plan · ₱999</div>
+              <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
+              <div style="font-size:12px;color:var(--muted);">{{ p.method }} · Ref: {{ p.reference }} · Txn: #{{ p.txn }} · ₱{{ p.amount }}</div>
               <div style="margin-top:8px;"><span class="badge badge-blue">Pending</span></div>
             </div>
             <div style="display:flex;gap:8px;">
@@ -189,6 +180,9 @@
               <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
             </div>
           </div>
+          {% else %}
+          <div style="text-align:center;color:var(--muted);padding:12px 0;">No pending payments to verify.</div>
+          {% endfor %}
         </div>
       </div>
       <div class="panel">
@@ -196,9 +190,20 @@
         <table class="data-table">
           <thead><tr><th>Txn#</th><th>Member</th><th>Plan</th><th>Method</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td>#TXN-8999</td><td>Jose Reyes</td><td>Annual</td>   <td>GCash</td>  <td>₱7,999</td><td>Apr 10, 2026</td><td><span class="badge badge-green">Approved</span></td></tr>
-            <tr><td>#TXN-8998</td><td>Pia Magno</td> <td>Monthly</td>  <td>Cash</td>   <td>₱999</td>  <td>Apr 9, 2026</td> <td><span class="badge badge-green">Approved</span></td></tr>
-            <tr><td>#TXN-8997</td><td>Ben Torres</td><td>Quarterly</td><td>PayMaya</td><td>₱2,499</td><td>Apr 8, 2026</td> <td><span class="badge badge-green">Approved</span></td></tr>
+            {% for p in payment_history %}
+            <tr>
+              <td>#{{ p.txn }}</td><td>{{ p.member_name }}</td><td>{{ p.plan }}</td><td>{{ p.method }}</td><td>₱{{ p.amount }}</td><td>{{ p.date }}</td>
+              <td>
+                {% if p.status == 'verified' %}
+                <span class="badge badge-green">Approved</span>
+                {% else %}
+                <span class="badge badge-red">Rejected</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;color:var(--muted);">No payment history yet.</td></tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
@@ -332,7 +337,7 @@
       <div class="form-group"><label class="form-label">Last Name</label> <input id="add-member-lname" class="form-input" placeholder="Dela Cruz"></div>
     </div>
     <div class="form-group"><label class="form-label">Email</label><input id="add-member-email" class="form-input" type="email" placeholder="juan@email.com"></div>
-    <div class="form-group"><label class="form-label">Phone</label><input id="add-member-phone" class="form-input" placeholder="+63 9xx xxx xxxx"></div>
+    <div class="form-group"><label class="form-label">Phone</label><input id="add-member-phone" class="form-input" placeholder="09171234567" maxlength="11" inputmode="numeric" pattern="09\d{9}" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)"></div>
     <div class="form-group"><label class="form-label">Plan</label>
       <select id="add-member-plan" class="form-input">
         <option>Monthly — ₱999</option>
@@ -341,6 +346,29 @@
       </select>
     </div>
     <button class="btn btn-red" style="width:100%;margin-top:8px;" onclick="addMember()">ADD MEMBER</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="edit-member-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('edit-member-modal')">✕</button>
+    <div class="modal-title">EDIT MEMBER</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">First Name</label><input id="edit-member-fname" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Last Name</label><input id="edit-member-lname" class="form-input"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Email</label><input id="edit-member-email" class="form-input" type="email"></div>
+    <div class="form-group"><label class="form-label">Phone</label><input id="edit-member-phone" class="form-input" placeholder="09171234567" maxlength="11" inputmode="numeric" pattern="09\d{9}" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)"></div>
+    <div class="form-group"><label class="form-label">Plan</label>
+      <select id="edit-member-plan" class="form-input">
+        <option>Daily — ₱80</option>
+        <option>Monthly — ₱999</option>
+        <option>Quarterly — ₱2,499</option>
+        <option>Annual — ₱7,999</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Expiry Date</label><input id="edit-member-expiry" class="form-input" type="date"></div>
+    <button class="btn btn-red" style="width:100%;margin-top:8px;" onclick="saveEditMember()">SAVE CHANGES</button>
   </div>
 </div>
 

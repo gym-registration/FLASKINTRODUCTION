@@ -50,10 +50,10 @@
 
     <div class="sidebar-footer">
       <div class="user-info">
-        <div class="user-avatar" id="sidebar-user-avatar" style="background:var(--green);color:#000;">MS</div>
+        <div class="user-avatar" id="sidebar-user-avatar" style="background:var(--green);color:#000;">{{ (member.first_name[0] ~ member.last_name[0])|upper }}</div>
         <div>
-          <div class="user-name"  id="sidebar-user-name">Member</div>
-          <div class="user-email" id="sidebar-user-email">member@email.com</div>
+          <div class="user-name"  id="sidebar-user-name">{{ member.first_name }} {{ member.last_name }}</div>
+          <div class="user-email" id="sidebar-user-email">{{ member.email }}</div>
         </div>
       </div>
       <button class="btn-logout" onclick="doLogout()">⏻ SIGN OUT</button>
@@ -75,10 +75,10 @@
           <div class="card-logo logo-badge">
             <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
           </div>
-          <div class="card-name" id="member-card-name">Maria Santos</div>
-          <div class="card-id">MBR-1001 · maria@email.com</div>
-          <div class="card-plan">Monthly</div>
-          <div class="card-expiry">Valid until: May 10, 2026</div>
+          <div class="card-name" id="member-card-name">{{ member.first_name }} {{ member.last_name }}</div>
+          <div class="card-id">MBR-{{ '%04d'|format(member.id) }} · {{ member.email }}</div>
+          <div class="card-plan">{{ plan.name if plan else 'No Active Plan' }}</div>
+          <div class="card-expiry">{% if plan %}Valid until: {{ plan.expiry_date }}{% else %}No membership on file{% endif %}</div>
         </div>
 
         <!-- Quick stats -->
@@ -86,16 +86,16 @@
           <div class="panel-header"><div class="panel-title">Quick Stats</div></div>
           <div class="panel-body">
             <div class="goal-item">
-              <div class="goal-header"><span>Attendance Rate</span><span style="color:var(--green);font-weight:700;">85%</span></div>
-              <div class="progress-bar"><div class="progress-fill green" style="width:85%"></div></div>
+              <div class="goal-header"><span>Attendance Rate ({{ month_label }})</span><span class="goal-val green" style="font-weight:700;">{{ attendance_rate }}%</span></div>
+              <div class="progress-bar"><div class="progress-fill green" data-width="{{ attendance_rate }}"></div></div>
             </div>
             <div class="goal-item">
-              <div class="goal-header"><span>Weight Goal</span><span style="color:var(--red);font-weight:700;">64/60kg</span></div>
-              <div class="progress-bar"><div class="progress-fill" style="width:60%"></div></div>
+              <div class="goal-header"><span>Weight Goal</span><span style="color:var(--red);font-weight:700;">{% if goal and goal.current_weight and goal.goal_weight %}{{ goal.current_weight }}/{{ goal.goal_weight }}kg{% else %}Not set{% endif %}</span></div>
+              <div class="progress-bar"><div class="progress-fill" data-width="{% if goal and goal.current_weight and goal.goal_weight and goal.current_weight > 0 %}{{ (100 - ((goal.current_weight - goal.goal_weight)|abs / goal.current_weight * 100))|round|int }}{% else %}0{% endif %}"></div></div>
             </div>
             <div class="goal-item">
-              <div class="goal-header"><span>Membership Used</span><span style="font-weight:700;">0/30 days</span></div>
-              <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+              <div class="goal-header"><span>Membership Used</span><span class="goal-val {% if plan.days_left > 3 %}green{% else %}red{% endif %}" style="font-weight:700;">{% if plan %}{{ plan.days_used }}/{{ plan.days_total }} days{% else %}—{% endif %}</span></div>
+              <div class="progress-bar"><div class="progress-fill" data-width="{{ plan.percent_used if plan else 0 }}"></div></div>
             </div>
           </div>
         </div>
@@ -118,12 +118,17 @@
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Current Plan</div></div>
           <div class="panel-body">
-            <div style="font-family:'Bebas Neue';font-size:36px;color:var(--red);margin-bottom:4px;">MONTHLY</div>
-            <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">₱999 / month</div>
-            <div class="goal-item"><div class="goal-header"><span>Start Date</span><span>April 10, 2026</span></div></div>
-            <div class="goal-item"><div class="goal-header"><span>Expiry Date</span><span>May 10, 2026</span></div></div>
-            <div class="goal-item"><div class="goal-header"><span>Days Left</span><span style="color:var(--green);font-weight:700;">30 days</span></div></div>
-            <div class="progress-bar" style="margin-top:16px;"><div class="progress-fill" style="width:0%"></div></div>
+            {% if plan %}
+            <div style="font-family:'Bebas Neue';font-size:36px;color:var(--red);margin-bottom:4px;">{{ plan.name|upper }}</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">₱{{ '%.0f'|format(plan.price) }} · Status: {{ plan.status }}</div>
+            <div class="goal-item"><div class="goal-header"><span>Start Date</span><span>{{ plan.start_date }}</span></div></div>
+            <div class="goal-item"><div class="goal-header"><span>Expiry Date</span><span>{{ plan.expiry_date }}</span></div></div>
+            <div class="goal-item"><div class="goal-header"><span>Days Left</span><span class="goal-val {% if plan.days_left > 3 %}green{% else %}red{% endif %}" style="font-weight:700;">{{ plan.days_left }} days</span></div></div>
+            <div class="progress-bar" style="margin-top:16px;"><div class="progress-fill" data-width="{{ plan.percent_used }}"></div></div>
+            {% else %}
+            <div style="font-family:'Bebas Neue';font-size:28px;color:var(--muted);margin-bottom:8px;">NO ACTIVE PLAN</div>
+            <div style="font-size:13px;color:var(--muted);">Select a plan below to get started.</div>
+            {% endif %}
           </div>
         </div>
 
@@ -175,7 +180,7 @@
 
     <!-- ── My Attendance ────────────────── -->
     <div id="member-attendance" class="sub-panel">
-      <div class="page-header"><div><div class="page-title">MY ATTENDANCE</div><div class="page-subtitle">April 2026</div></div></div>
+      <div class="page-header"><div><div class="page-title">MY ATTENDANCE</div><div class="page-subtitle">{{ month_label }}</div></div></div>
       <div class="panel">
         <div class="panel-header"><div class="panel-title">Attendance Calendar</div></div>
         <div class="panel-body"><div class="att-grid" id="att-grid-member"></div></div>
@@ -185,9 +190,11 @@
         <table class="data-table">
           <thead><tr><th>Date</th><th>Check-in</th><th>Check-out</th><th>Duration</th></tr></thead>
           <tbody>
-            <tr><td>Apr 10, 2026</td><td>6:02 AM</td><td>7:45 AM</td><td>1h 43m</td></tr>
-            <tr><td>Apr 9, 2026</td> <td>6:15 AM</td><td>7:50 AM</td><td>1h 35m</td></tr>
-            <tr><td>Apr 8, 2026</td> <td>5:45 AM</td><td>7:10 AM</td><td>1h 25m</td></tr>
+            {% for s in session_history %}
+            <tr><td>{{ s.date }}</td><td>{{ s.check_in }}</td><td>{{ s.check_out }}</td><td>{{ s.duration }}</td></tr>
+            {% else %}
+            <tr><td colspan="4" style="text-align:center;color:var(--muted);">No sessions logged this month yet.</td></tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
@@ -203,37 +210,37 @@
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Current Measurements</div></div>
           <div class="panel-body">
+            {% if goal %}
             <div class="goal-item">
-              <div class="goal-header"><span class="goal-label">Weight</span><span class="goal-val red">64 kg</span></div>
-              <div style="font-size:11px;color:var(--muted);">Goal: 60 kg</div>
-              <div class="progress-bar"><div class="progress-fill green" style="width:72%"></div></div>
+              <div class="goal-header"><span class="goal-label">Weight</span><span class="goal-val red">{{ goal.current_weight if goal.current_weight else '—' }} kg</span></div>
+              <div style="font-size:11px;color:var(--muted);">Goal: {{ goal.goal_weight if goal.goal_weight else '—' }} kg</div>
             </div>
             <div class="goal-item">
-              <div class="goal-header"><span class="goal-label">Body Fat %</span><span class="goal-val red">22%</span></div>
-              <div style="font-size:11px;color:var(--muted);">Goal: 18%</div>
-              <div class="progress-bar"><div class="progress-fill" style="width:40%"></div></div>
+              <div class="goal-header"><span class="goal-label">Body Fat %</span><span class="goal-val red">{{ goal.current_body_fat if goal.current_body_fat else '—' }}%</span></div>
+              <div style="font-size:11px;color:var(--muted);">Goal: {{ goal.goal_body_fat if goal.goal_body_fat else '—' }}%</div>
             </div>
             <div class="goal-item">
-              <div class="goal-header"><span class="goal-label">Muscle Mass</span><span class="goal-val green">48 kg</span></div>
-              <div style="font-size:11px;color:var(--muted);">Goal: 52 kg</div>
-              <div class="progress-bar"><div class="progress-fill green" style="width:65%"></div></div>
+              <div class="goal-header"><span class="goal-label">Muscle Mass</span><span class="goal-val green">{{ goal.current_muscle if goal.current_muscle else '—' }} kg</span></div>
+              <div style="font-size:11px;color:var(--muted);">Goal: {{ goal.goal_muscle if goal.goal_muscle else '—' }} kg</div>
             </div>
             <div class="goal-item">
-              <div class="goal-header"><span class="goal-label">BMI</span><span class="goal-val red">24.2</span></div>
+              <div class="goal-header"><span class="goal-label">BMI</span><span class="goal-val red">{{ goal.current_bmi if goal.current_bmi else '—' }}</span></div>
               <div style="font-size:11px;color:var(--muted);">Normal range: 18.5–24.9</div>
-              <div class="progress-bar"><div class="progress-fill green" style="width:88%"></div></div>
             </div>
+            {% else %}
+            <div style="text-align:center;color:var(--muted);padding:20px 0;">No body goals logged yet. Tap "+ UPDATE GOALS" to add your first entry.</div>
+            {% endif %}
           </div>
         </div>
         <div class="panel">
-          <div class="panel-header"><div class="panel-title">Monthly Progress</div></div>
+          <div class="panel-header"><div class="panel-title">Notes</div></div>
           <div class="panel-body">
-            <div style="text-align:center;padding:20px 0;">
-              <div style="font-family:'Bebas Neue';font-size:64px;color:var(--green);line-height:1;">-1.2</div>
-              <div style="font-size:14px;color:var(--muted);">kg lost this month</div>
-              <div style="margin-top:24px;font-size:13px;color:var(--muted);">Keep going! You're 4 kg away from your goal.</div>
-              <div style="margin-top:16px;"><span class="badge badge-green">On Track ✓</span></div>
-            </div>
+            {% if goal and goal.notes %}
+            <div style="font-size:13px;color:var(--white);line-height:1.6;">{{ goal.notes }}</div>
+            <div style="margin-top:16px;font-size:11px;color:var(--muted);">Last updated: {{ goal.recorded_at.strftime('%b %d, %Y') }}</div>
+            {% else %}
+            <div style="text-align:center;color:var(--muted);padding:20px 0;">No notes yet.</div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -279,14 +286,14 @@
     <button class="modal-close" onclick="closeModal('goals-modal')">✕</button>
     <div class="modal-title">UPDATE BODY GOALS</div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Current Weight (kg)</label><input class="form-input" value="64"></div>
-      <div class="form-group"><label class="form-label">Goal Weight (kg)</label>   <input class="form-input" value="60"></div>
+      <div class="form-group"><label class="form-label">Current Weight (kg)</label><input class="form-input" value="{{ goal.current_weight if goal and goal.current_weight else '' }}"></div>
+      <div class="form-group"><label class="form-label">Goal Weight (kg)</label>   <input class="form-input" value="{{ goal.goal_weight if goal and goal.goal_weight else '' }}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Body Fat %</label>        <input class="form-input" value="22"></div>
-      <div class="form-group"><label class="form-label">Muscle Mass (kg)</label>  <input class="form-input" value="48"></div>
+      <div class="form-group"><label class="form-label">Body Fat %</label>        <input class="form-input" value="{{ goal.current_body_fat if goal and goal.current_body_fat else '' }}"></div>
+      <div class="form-group"><label class="form-label">Muscle Mass (kg)</label>  <input class="form-input" value="{{ goal.current_muscle if goal and goal.current_muscle else '' }}"></div>
     </div>
-    <div class="form-group"><label class="form-label">Notes</label><input class="form-input" placeholder="e.g. Focus on cardio this week"></div>
+    <div class="form-group"><label class="form-label">Notes</label><input class="form-input" value="{{ goal.notes if goal and goal.notes else '' }}" placeholder="e.g. Focus on cardio this week"></div>
     <button class="btn btn-red" style="width:100%;margin-top:8px;"
             onclick="closeModal('goals-modal');showToast('Body goals updated!','success')">SAVE GOALS</button>
   </div>
@@ -295,6 +302,7 @@
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
+<script id="member-dashboard-data" type="application/json">{{ {'present_days': present_days, 'days_in_month': days_in_month}|tojson }}</script>
 <script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tr-member.js') }}"></script>
 </body>

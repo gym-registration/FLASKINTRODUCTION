@@ -28,9 +28,30 @@ const MemberModule = (() => {
     const cardName = document.getElementById('member-card-name');
     if (cardName) cardName.textContent = session.name;
 
-    buildAttGrid('att-grid-member', [1, 3, 4, 6, 7, 8, 9, 10]);
+    const memberData = _parseMemberDashboardData();
+    buildAttGrid('att-grid-member', memberData.present_days || [], memberData.days_in_month || 30);
+    _hydrateProgressBars();
     _bindModalBackdrops();
     Navigation.activateTab('member', 'overview', document.getElementById('nav-member-overview'));
+  }
+
+  function _parseMemberDashboardData() {
+    const el = document.getElementById('member-dashboard-data');
+    if (!el) return {};
+    try {
+      return JSON.parse(el.textContent || el.innerText || '{}');
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function _hydrateProgressBars() {
+    document.querySelectorAll('.progress-fill[data-width]').forEach(el => {
+      const width = Number(el.dataset.width);
+      if (!Number.isNaN(width)) {
+        el.style.width = `${width}%`;
+      }
+    });
   }
 
   function tab(tabName, navEl) {

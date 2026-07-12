@@ -116,6 +116,11 @@ const LoginPage = (() => {
       regNext(1);
       return;
     }
+    if (!/^09\d{9}$/.test(phone)) {
+      showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
+      regNext(1);
+      return;
+    }
     if (password.length < 8) {
       showToast('Password must be at least 8 characters.', 'error');
       regNext(1);

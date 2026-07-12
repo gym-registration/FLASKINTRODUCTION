@@ -1,8 +1,13 @@
 import os
 import secrets
 import string
+import calendar
+from dotenv import load_dotenv
+load_dotenv()  # Reads variables from a .env file in the project root, if present
+
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone, date, timedelta
 
@@ -12,6 +17,21 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = ('mysql+pymysql://root:admin123@127.0.0.1:3306/gym_db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# ── Flask-Mail configuration ─────────────────────────────────
+# Set these as real environment variables (don't hardcode credentials here).
+# For Gmail: MAIL_USERNAME is your Gmail address, MAIL_PASSWORD is a 16-char
+# "App Password" (not your normal Gmail password) — generate one at
+# https://myaccount.google.com/apppasswords (requires 2-Step Verification on).
+app.config['MAIL_SERVER']          = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT']            = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS']         = os.environ.get('MAIL_USE_TLS', 'true').lower() == 'true'
+app.config['MAIL_USE_SSL']         = os.environ.get('MAIL_USE_SSL', 'false').lower() == 'true'
+app.config['MAIL_USERNAME']        = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD']        = os.environ.get('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER']  = os.environ.get('MAIL_DEFAULT_SENDER', app.config['MAIL_USERNAME'])
+
+mail = Mail(app)
 
 db = SQLAlchemy(app)
 
@@ -26,6 +46,8 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(10), nullable=False, default='member')
     status = db.Column(db.String(15), nullable=False, default='pending')
+    reset_token         = db.Column(db.String(64), nullable=True, unique=True, index=True)
+    reset_token_expires = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
@@ -166,6 +188,88 @@ def login():
     return render_template('trmem.html')
 
 
+# ── Forgot / Reset Password ──────────────────────────────────
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        user  = User.query.filter_by(email=email).first() if email else None
+
+        if user:
+            token = secrets.token_urlsafe(32)
+            user.reset_token         = token
+            user.reset_token_expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)
+            db.session.commit()
+
+            reset_link = url_for('reset_password', token=token, _external=True)
+
+            if app.config.get('MAIL_USERNAME') and app.config.get('MAIL_PASSWORD'):
+                try:
+                    msg = Message(
+                        subject='POWER GYM — Reset Your Password',
+                        recipients=[email],
+                        body=(
+                            f"Hi {user.first_name},\n\n"
+                            f"We received a request to reset your POWER GYM password.\n\n"
+                            f"Click the link below to choose a new password (valid for 1 hour):\n"
+                            f"{reset_link}\n\n"
+                            f"If you didn't request this, you can safely ignore this email."
+                        ),
+                    )
+                    mail.send(msg)
+                    flash('A password reset link has been sent to your email.', 'success')
+                except Exception as e:
+                    print(f"[MAIL ERROR] Could not send reset email to {email}: {e}")
+                    flash('Could not send the reset email right now. Please try again shortly.', 'error')
+            else:
+                # No MAIL_USERNAME/MAIL_PASSWORD configured — dev fallback so the
+                # flow stays testable without SMTP credentials set up yet.
+                print(f"[DEV] Email not configured. Password reset link for {email}: {reset_link}")
+                flash(f'Email is not configured yet — here is your reset link (dev mode): {reset_link}', 'success')
+        else:
+            # Same message whether or not the email exists, so we don't leak
+            # which addresses are registered.
+            flash('If an account with that email exists, a reset link has been sent.', 'success')
+
+        return render_template('forgot-password.html')
+
+    return render_template('forgot-password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    user = User.query.filter_by(reset_token=token).first()
+    token_valid = user is not None and user.reset_token_expires is not None and user.reset_token_expires > now
+
+    if not token_valid:
+        flash('This reset link is invalid or has expired. Please request a new one.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        password = request.form.get('password') or ''
+        confirm  = request.form.get('confirm')  or ''
+
+        if len(password) < 8:
+            flash('Password must be at least 8 characters.', 'error')
+            return render_template('reset-password.html', token=token)
+
+        if password != confirm:
+            flash('Passwords do not match.', 'error')
+            return render_template('reset-password.html', token=token)
+
+        user.password             = generate_password_hash(password)
+        user.reset_token          = None
+        user.reset_token_expires  = None
+        db.session.commit()
+
+        flash('Password reset successfully. Please sign in with your new password.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset-password.html', token=token)
+
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json(silent=True) or request.form
@@ -185,6 +289,9 @@ def register():
 
     if len(password) < 8:
         return jsonify(success=False, error='Password must be at least 8 characters.'), 400
+
+    if not _valid_phone(phone):
+        return jsonify(success=False, error='Phone number must start with 09 and be exactly 11 digits.'), 400
 
     if User.query.filter_by(email=email).first() is not None:
         return jsonify(success=False, error='An account with this email already exists.'), 409
@@ -233,6 +340,15 @@ def register():
         )
         db.session.add(new_membership)
 
+        new_payment = Payment(
+            member_id=new_user.id,
+            plan_id=plan.id,
+            amount=plan.price,
+            method=pay_method or 'unspecified',
+            status='pending',
+        )
+        db.session.add(new_payment)
+
     db.session.commit()
 
     return jsonify(success=True, message='Registration submitted! Awaiting verification.')
@@ -241,6 +357,11 @@ def register():
 def _generate_temp_password(length=10):
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _valid_phone(phone):
+    """Phone number must be exactly 11 digits and start with '09' (PH mobile format)."""
+    return phone.isdigit() and len(phone) == 11 and phone.startswith('09')
 
 
 @app.route('/admin/add-member', methods=['POST'])
@@ -258,6 +379,9 @@ def admin_add_member():
 
     if not first_name or not last_name or not email:
         return jsonify(success=False, error='Please fill in first name, last name, and email.'), 400
+
+    if not _valid_phone(phone):
+        return jsonify(success=False, error='Phone number must start with 09 and be exactly 11 digits.'), 400
 
     if User.query.filter_by(email=email).first() is not None:
         return jsonify(success=False, error='A user with this email already exists.'), 409
@@ -304,6 +428,159 @@ def admin_add_member():
             'expiry': expiry.strftime('%b %d, %Y'),
             'temp_password': temp_password,
         }
+    )
+
+
+@app.route('/admin/edit-member/<int:member_id>', methods=['POST'])
+def admin_edit_member(member_id):
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    user = User.query.filter_by(id=member_id, role='member').first()
+    if user is None:
+        return jsonify(success=False, error='Member not found.'), 404
+
+    data = request.get_json(silent=True) or request.form
+
+    first_name = (data.get('first_name') or '').strip()
+    last_name  = (data.get('last_name')  or '').strip()
+    email      = (data.get('email')      or '').strip().lower()
+    phone      = (data.get('phone')      or '').strip()
+    plan_name  = (data.get('plan')       or '').strip()
+    expiry_str = (data.get('expiry')     or '').strip()
+
+    if not first_name or not last_name or not email:
+        return jsonify(success=False, error='First name, last name, and email are required.'), 400
+
+    if not _valid_phone(phone):
+        return jsonify(success=False, error='Phone number must start with 09 and be exactly 11 digits.'), 400
+
+    # Check email isn't taken by someone else
+    existing = User.query.filter(User.email == email, User.id != member_id).first()
+    if existing is not None:
+        return jsonify(success=False, error='Another account already uses this email.'), 409
+
+    user.first_name = first_name
+    user.last_name  = last_name
+    user.email      = email
+    user.phone      = phone or None
+
+    membership = Membership.query.filter_by(member_id=user.id).first()
+
+    plan = MembershipPlan.query.filter_by(name=plan_name).first() if plan_name else None
+    expiry_date = None
+    if expiry_str:
+        try:
+            expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+        except ValueError:
+            expiry_date = None
+
+    if membership is None and (plan is not None or expiry_date is not None):
+        membership = Membership(
+            member_id=user.id,
+            plan_id=plan.id if plan else None,
+            start_date=date.today(),
+            expiry_date=expiry_date or date.today(),
+            status='active',
+        )
+        db.session.add(membership)
+    elif membership is not None:
+        if plan is not None:
+            membership.plan_id = plan.id
+        if expiry_date is not None:
+            membership.expiry_date = expiry_date
+
+    db.session.commit()
+
+    plan_display   = membership.plan.name if (membership and membership.plan) else '—'
+    expiry_display = membership.expiry_date.strftime('%b %d, %Y') if (membership and membership.expiry_date) else '—'
+    expiry_iso     = membership.expiry_date.isoformat() if (membership and membership.expiry_date) else ''
+
+    return jsonify(
+        success=True,
+        member={
+            'name': f'{first_name} {last_name}',
+            'email': email,
+            'plan': plan_display,
+            'expiry': expiry_display,
+            'expiry_iso': expiry_iso,
+        }
+    )
+
+
+@app.route('/admin/delete-member/<int:member_id>', methods=['POST'])
+def admin_delete_member(member_id):
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    user = User.query.filter_by(id=member_id, role='member').first()
+    if user is None:
+        return jsonify(success=False, error='Member not found.'), 404
+
+    db.session.delete(user)
+    db.session.commit()
+
+    return jsonify(success=True, message='Member deleted successfully.')
+
+
+@app.route('/admin/verify-payment/<int:payment_id>', methods=['POST'])
+def admin_verify_payment(payment_id):
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    data = request.get_json(silent=True) or request.form
+    action = (data.get('action') or '').strip().lower()
+    if action not in ('approve', 'reject'):
+        return jsonify(success=False, error='Invalid action.'), 400
+
+    payment = Payment.query.get(payment_id)
+    if payment is None:
+        return jsonify(success=False, error='Payment not found.'), 404
+    if payment.status != 'pending':
+        return jsonify(success=False, error='This payment has already been processed.'), 409
+
+    if action == 'reject':
+        payment.status = 'rejected'
+        payment.verified_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return jsonify(success=True, message='Payment rejected.', status='rejected')
+
+    # ── Approve: activate/extend membership (same logic as staff_record_payment) ──
+    payment.status = 'verified'
+    payment.verified_at = datetime.now(timezone.utc)
+
+    member = payment.member
+    plan   = payment.plan
+    today  = date.today()
+
+    membership = Membership.query.filter_by(member_id=member.id).first()
+    if membership is None:
+        membership = Membership(
+            member_id=member.id,
+            plan_id=plan.id if plan else None,
+            start_date=today,
+            expiry_date=today,
+            status='active',
+        )
+        db.session.add(membership)
+
+    base_date     = membership.expiry_date if membership.expiry_date and membership.expiry_date > today else today
+    duration_days = plan.duration_days if plan else 30
+    membership.expiry_date = base_date + timedelta(days=duration_days)
+    if plan is not None:
+        membership.plan_id = plan.id
+    membership.status = 'active'
+
+    if member.status != 'active':
+        member.status = 'active'
+
+    db.session.commit()
+
+    return jsonify(
+        success=True,
+        message='Payment approved — membership activated!',
+        status='verified',
+        expiry=membership.expiry_date.strftime('%b %d, %Y'),
     )
 
 
@@ -475,7 +752,94 @@ def member():
         return redirect(url_for('login'))
     if session.get('role') != 'member':
         return redirect(url_for(session.get('role', 'login')))
-    return render_template('member-dashboard.html')
+
+    user = User.query.get(session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+
+    today = date.today()
+
+    # ── Current plan / membership ──
+    membership = Membership.query.filter_by(member_id=user.id).first()
+    plan_obj   = membership.plan if membership else None
+
+    current_plan = None
+    if membership and plan_obj:
+        days_total = plan_obj.duration_days
+        days_left  = max((membership.expiry_date - today).days, 0)
+        days_used  = max(min(days_total - days_left, days_total), 0)
+        percent_used = int((days_used / days_total) * 100) if days_total else 0
+
+        if membership.expiry_date < today:
+            plan_status = 'Expired'
+        elif membership.status == 'pending':
+            plan_status = 'Pending'
+        else:
+            plan_status = 'Active'
+
+        current_plan = {
+            'name': plan_obj.name,
+            'price': plan_obj.price,
+            'start_date': membership.start_date.strftime('%B %d, %Y'),
+            'expiry_date': membership.expiry_date.strftime('%B %d, %Y'),
+            'days_left': days_left,
+            'days_total': days_total,
+            'days_used': days_used,
+            'percent_used': percent_used,
+            'status': plan_status,
+        }
+
+    # ── Attendance (current month) ──
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    month_start    = today.replace(day=1)
+    month_start_dt = datetime.combine(month_start, datetime.min.time())
+
+    attendance_rows = (
+        Attendance.query
+        .filter(Attendance.member_id == user.id, Attendance.check_in >= month_start_dt)
+        .order_by(Attendance.check_in.desc())
+        .all()
+    )
+
+    present_days = sorted({a.check_in.day for a in attendance_rows})
+
+    session_history = []
+    for a in attendance_rows[:10]:
+        duration_text = '—'
+        if a.check_out:
+            mins = a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
+            h, m = divmod(mins, 60)
+            duration_text = f'{h}h {m}m' if h else f'{m}m'
+        session_history.append({
+            'date':      a.check_in.strftime('%b %d, %Y'),
+            'check_in':  a.check_in.strftime('%I:%M %p').lstrip('0'),
+            'check_out': a.check_out.strftime('%I:%M %p').lstrip('0') if a.check_out else '—',
+            'duration':  duration_text,
+        })
+
+    days_elapsed    = today.day
+    attendance_rate = int((len(present_days) / days_elapsed) * 100) if days_elapsed else 0
+
+    # ── Body goals (most recent entry) ──
+    goal = (
+        BodyGoal.query
+        .filter_by(member_id=user.id)
+        .order_by(BodyGoal.recorded_at.desc())
+        .first()
+    )
+
+    return render_template(
+        'member-dashboard.html',
+        member=user,
+        plan=current_plan,
+        present_days=present_days,
+        days_in_month=days_in_month,
+        month_label=today.strftime('%B %Y'),
+        session_history=session_history,
+        attendance_rate=attendance_rate,
+        goal=goal,
+    )
 
 
 @app.route('/staff')
@@ -583,7 +947,46 @@ def admin():
         return redirect(url_for(session.get('role', 'login')))
 
     members = _get_members_with_plans()
-    return render_template('admin-dashboard.html', members=members)
+
+    pending_payments_rows = (
+        Payment.query
+        .filter_by(status='pending')
+        .order_by(Payment.paid_at.desc())
+        .all()
+    )
+    pending_payments = [{
+        'id': p.id,
+        'txn': f'TXN-{9000 + p.id}',
+        'member_name': f'{p.member.first_name} {p.member.last_name}',
+        'plan': p.plan.name if p.plan else '—',
+        'method': p.method,
+        'reference': p.reference_number or '—',
+        'amount': f'{float(p.amount):,.2f}',
+    } for p in pending_payments_rows]
+
+    payment_history_rows = (
+        Payment.query
+        .filter(Payment.status.in_(['verified', 'rejected']))
+        .order_by(Payment.paid_at.desc())
+        .limit(50)
+        .all()
+    )
+    payment_history = [{
+        'txn': f'TXN-{9000 + p.id}',
+        'member_name': f'{p.member.first_name} {p.member.last_name}',
+        'plan': p.plan.name if p.plan else '—',
+        'method': p.method,
+        'amount': f'{float(p.amount):,.2f}',
+        'date': p.paid_at.strftime('%b %d, %Y'),
+        'status': p.status,
+    } for p in payment_history_rows]
+
+    return render_template(
+        'admin-dashboard.html',
+        members=members,
+        pending_payments=pending_payments,
+        payment_history=payment_history,
+    )
 
 
 # ── Seed ──────────────────────────────────────────────────────

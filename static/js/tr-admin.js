@@ -34,9 +34,6 @@ const AdminModule = (() => {
     buildAttGrid('att-grid-admin', [1, 2, 3, 4, 5, 7, 8, 9, 10]);
     buildAttGrid('att-grid-admin-full', [1, 2, 3, 4, 5, 7, 8, 9, 10]);
 
-    // Wire member table CRUD buttons
-    wireManageMemberButtons();
-
     // Modal close on backdrop click
     _bindModalBackdrops();
 
@@ -60,6 +57,10 @@ const AdminModule = (() => {
 
     if (!firstName || !lastName || !email) {
       showToast('Please fill first name, last name, and email', 'error');
+      return;
+    }
+    if (!/^09\d{9}$/.test(phone)) {
+      showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
       return;
     }
 
@@ -89,6 +90,10 @@ const AdminModule = (() => {
         const tbody = document.querySelector('#members-table tbody');
         if (tbody) {
           const row = document.createElement('tr');
+          row.dataset.id        = m.id;
+          row.dataset.plan      = m.plan;
+          row.dataset.phone     = m.phone || '';
+          row.dataset.expiryIso = m.expiry_iso || '';
           row.innerHTML = `
             <td>#${m.id}</td>
             <td>${m.name}</td>
@@ -97,11 +102,10 @@ const AdminModule = (() => {
             <td>${m.expiry}</td>
             <td><span class="badge badge-green">Active</span></td>
             <td>
-              <button class="btn btn-sm btn-outline">Edit</button>
-              <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);">Del</button>
+              <button class="btn btn-sm btn-outline" onclick="openEditMemberModal(this)">Edit</button>
+              <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="deleteMemberRow(this)">Del</button>
             </td>`;
           tbody.prepend(row);
-          wireManageMemberButtons();
         }
 
         closeModal('add-member-modal');
@@ -120,39 +124,116 @@ const AdminModule = (() => {
       });
   }
 
-  function editMemberRow(btn) {
+  let editingMemberId = null;
+
+  /** Open the Edit Member modal, pre-filled from the row's data */
+  function openEditMemberModal(btn) {
     const row = btn.closest('tr');
     if (!row) return;
     const cells = row.querySelectorAll('td');
     if (cells.length < 7) return;
-    const newName   = prompt('Edit member name:',   cells[1].textContent.trim());
-    if (newName === null) return;
-    const newPlan   = prompt('Edit member plan:',   cells[3].textContent.trim());
-    if (newPlan === null) return;
-    const newExpiry = prompt('Edit expiry date:',   cells[4].textContent.trim());
-    if (newExpiry === null) return;
-    if (newName.trim())   cells[1].textContent = newName.trim();
-    if (newPlan.trim())   cells[3].textContent = newPlan.trim();
-    if (newExpiry.trim()) cells[4].textContent = newExpiry.trim();
-    showToast('Member updated successfully', 'success');
+
+    const [firstName, ...rest] = cells[1].textContent.trim().split(' ');
+
+    editingMemberId = row.dataset.id;
+    document.getElementById('edit-member-fname').value  = firstName || '';
+    document.getElementById('edit-member-lname').value  = rest.join(' ');
+    document.getElementById('edit-member-email').value  = cells[2].textContent.trim();
+    document.getElementById('edit-member-phone').value  = row.dataset.phone || '';
+    document.getElementById('edit-member-expiry').value = row.dataset.expiryIso || '';
+
+    const planSelect = document.getElementById('edit-member-plan');
+    if (planSelect) {
+      [...planSelect.options].forEach(opt => {
+        opt.selected = opt.value.split('—')[0].trim() === row.dataset.plan;
+      });
+    }
+
+    openModal('edit-member-modal');
   }
 
+  /** Save the Edit Member modal's fields to the server */
+  function saveEditMember() {
+    const firstName = _val('edit-member-fname');
+    const lastName  = _val('edit-member-lname');
+    const email     = _val('edit-member-email');
+    const phone     = _val('edit-member-phone');
+    const planText  = document.getElementById('edit-member-plan')?.value || '';
+    const planName  = planText.split('—')[0].trim();
+    const expiry    = document.getElementById('edit-member-expiry')?.value || '';
+
+    if (!firstName || !lastName || !email) {
+      showToast('First name, last name, and email are required', 'error');
+      return;
+    }
+    if (!/^09\d{9}$/.test(phone)) {
+      showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
+      return;
+    }
+
+    const saveBtn = document.querySelector('#edit-member-modal .btn-red');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'SAVING...'; }
+
+    fetch(`/admin/edit-member/${editingMemberId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        first_name: firstName,
+        last_name:  lastName,
+        email:      email,
+        phone:      phone,
+        plan:       planName,
+        expiry:     expiry
+      })
+    })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'SAVE CHANGES'; }
+        if (!ok || !data.success) {
+          showToast(data.error || 'Failed to update member.', 'error');
+          return;
+        }
+
+        const row = document.querySelector(`#members-table tr[data-id="${editingMemberId}"]`);
+        if (row) {
+          const m = data.member;
+          const cells = row.querySelectorAll('td');
+          cells[1].textContent = m.name;
+          cells[2].textContent = m.email;
+          cells[3].textContent = m.plan;
+          cells[4].textContent = m.expiry;
+          row.dataset.plan      = m.plan;
+          row.dataset.expiryIso = m.expiry_iso;
+        }
+
+        closeModal('edit-member-modal');
+        showToast('Member updated successfully', 'success');
+      })
+      .catch(() => {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'SAVE CHANGES'; }
+        showToast('Could not reach the server. Please try again.', 'error');
+      });
+  }
+
+  /** Delete a member row from the server, then remove it from the table */
   function deleteMemberRow(btn) {
     const row  = btn.closest('tr');
     if (!row) return;
+    const id   = row.dataset.id;
     const name = row.querySelectorAll('td')[1]?.textContent.trim() || 'this member';
-    if (!confirm(`Delete ${name}?`)) return;
-    row.remove();
-    showToast('Member deleted', 'success');
-  }
+    if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
 
-  function wireManageMemberButtons() {
-    document.querySelectorAll('#members-table tbody tr').forEach(row => {
-      const buttons = row.querySelectorAll('td:last-child button');
-      if (buttons.length < 2) return;
-      buttons[0].onclick = function () { editMemberRow(this); };
-      buttons[1].onclick = function () { deleteMemberRow(this); };
-    });
+    fetch(`/admin/delete-member/${id}`, { method: 'POST' })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast(data.error || 'Failed to delete member.', 'error');
+          return;
+        }
+        row.remove();
+        showToast('Member deleted', 'success');
+      })
+      .catch(() => showToast('Could not reach the server. Please try again.', 'error'));
   }
 
   /** Analytics report generator */
@@ -271,7 +352,7 @@ const AdminModule = (() => {
   }
 
   return {
-    init, tab, addMember, editMemberRow, deleteMemberRow, wireManageMemberButtons,
+    init, tab, addMember, openEditMemberModal, saveEditMember, deleteMemberRow,
     generateAnalyticsReport, refreshCurrentReport, exportReportCSV, exportReportPDF
   };
 })();
@@ -287,6 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.adminTab                = (tab, el) => AdminModule.tab(tab, el);
   window.addMember               = AdminModule.addMember;
+  window.openEditMemberModal     = AdminModule.openEditMemberModal;
+  window.saveEditMember          = AdminModule.saveEditMember;
+  window.deleteMemberRow         = AdminModule.deleteMemberRow;
   window.generateAnalyticsReport = AdminModule.generateAnalyticsReport;
   window.refreshCurrentReport    = AdminModule.refreshCurrentReport;
   window.exportCurrentReportCSV  = AdminModule.exportReportCSV;
