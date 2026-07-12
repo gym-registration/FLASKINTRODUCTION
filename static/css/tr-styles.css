@@ -611,6 +611,31 @@ body::before {
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
+/* Password field with show/hide eye toggle */
+.password-field { position: relative; }
+.password-field .form-input { padding-right: 44px; }
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  border-radius: 4px;
+}
+.password-toggle:hover { color: var(--white); }
+.password-toggle svg { width: 18px; height: 18px; display: block; }
+.password-toggle .icon-eye-off { display: none; }
+.password-field.revealed .icon-eye { display: none; }
+.password-field.revealed .icon-eye-off { display: block; }
+
 /* Search input */
 .search-input {
   background: rgba(255,255,255,0.04);

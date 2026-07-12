@@ -301,7 +301,19 @@ function selectPlan(card, plan) {
   card.classList.add('selected');
 }
 
-/** Logout — works from any dashboard page */
+/** Toggle a password input between hidden (••••) and visible (plain text).
+ *  Expects the button to live inside a .password-field wrapper alongside the input. */
+function togglePasswordVisibility(btn) {
+  const wrapper = btn.closest('.password-field');
+  if (!wrapper) return;
+  const input = wrapper.querySelector('input');
+  if (!input) return;
+
+  const willShow = input.type === 'password';
+  input.type = willShow ? 'text' : 'password';
+  wrapper.classList.toggle('revealed', willShow);
+  btn.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
+}
 function doLogout() {
   window.location.href = '/logout';
 }
@@ -359,6 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.doLogout      = doLogout;
   window.verifyPayment = verifyPayment;
   window.filterTable   = filterTable;
+  window.togglePasswordVisibility = togglePasswordVisibility;
   window.goTo          = (screen) => Navigation.goToScreen(screen);
   // selectPlan is re-assigned per page (login/member) where relevant; keep a fallback
   if (!window.selectPlan) window.selectPlan = selectPlan;
