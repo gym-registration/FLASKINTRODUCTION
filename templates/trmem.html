@@ -125,7 +125,12 @@
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Phone</label>
-          <input class="form-input" id="reg-phone" placeholder="+63 9xx xxx xxxx">
+          <input class="form-input" id="reg-phone" placeholder="09171234567"
+                 maxlength="11" inputmode="numeric" pattern="09\d{9}"
+                 oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)">
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;">
+            Philippine mobile number — 11 digits, starting with 09 (e.g. 09171234567)
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Birthday</label>
@@ -152,7 +157,7 @@
           </button>
         </div>
       </div>
-      <button class="btn-primary" onclick="regNext(2)">CONTINUE →</button>
+      <button class="btn-primary" onclick="validateStep1()">CONTINUE →</button>
     </div>
 
     <!-- STEP 2: Plan Selection -->
@@ -182,7 +187,7 @@
       </div>
       <div style="display:flex;gap:10px;margin-top:24px;">
         <button class="btn btn-outline" onclick="regNext(1)">← BACK</button>
-        <button class="btn btn-red" style="flex:1;" onclick="regNext(3)">CONTINUE →</button>
+        <button class="btn btn-red" style="flex:1;" onclick="validateStep2()">CONTINUE →</button>
       </div>
     </div>
 
@@ -228,11 +233,13 @@
         </div>
       </div>
       <div id="pay-upload" style="display:none;margin-top:16px;">
-        <div class="upload-zone" onclick="showToast('File picker would open here','success')">
-          <span class="upload-icon">📤</span>
-          Upload Proof of Payment<br>
-          <span style="font-size:11px;">PNG, JPG, PDF up to 10MB</span>
+        <input type="file" id="reg-proof-file" accept=".png,.jpg,.jpeg,.pdf" style="display:none;" onchange="handleProofUpload(this)">
+        <div class="upload-zone" id="reg-upload-zone" onclick="document.getElementById('reg-proof-file').click()">
+          <span class="upload-icon" id="reg-upload-icon">📤</span>
+          <span id="reg-upload-label">Upload Proof of Payment<br>
+          <span style="font-size:11px;">PNG, JPG, PDF up to 10MB</span></span>
         </div>
+        <img id="reg-proof-preview" style="display:none;max-width:100%;max-height:160px;border-radius:6px;margin-top:10px;">
       </div>
       <div id="pay-cash-note" style="display:none;margin-top:16px;padding:14px;
            background:rgba(245,197,24,0.08);border:1px solid rgba(245,197,24,0.2);

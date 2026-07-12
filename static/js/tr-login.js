@@ -15,6 +15,7 @@ const LoginPage = (() => {
 
   let selectedPlan    = null;
   let selectedPayment = null;
+  let selectedProofFile = null;
 
   function init() {
     // Always show the login/register page first when opening the root URL.
@@ -79,10 +80,82 @@ const LoginPage = (() => {
     }
   }
 
+  /** STEP 1 → 2: personal information must be complete and valid before continuing */
+  function validateStep1() {
+    const firstName = _val('reg-fname');
+    const lastName  = _val('reg-lname');
+    const email     = _val('reg-email');
+    const phone     = _val('reg-phone');
+    const password  = document.getElementById('reg-pass')?.value    || '';
+    const confirm   = document.getElementById('reg-confirm')?.value || '';
+
+    if (!firstName || !lastName || !email || !password || !confirm) {
+      showToast('Please fill in all required fields.', 'error');
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      showToast('Please enter a valid email address.', 'error');
+      return;
+    }
+    if (!/^09\d{9}$/.test(phone)) {
+      showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
+      return;
+    }
+    if (password.length < 8) {
+      showToast('Password must be at least 8 characters.', 'error');
+      return;
+    }
+    if (password !== confirm) {
+      showToast('Passwords do not match.', 'error');
+      return;
+    }
+
+    regNext(2);
+  }
+
+  /** STEP 2 → 3: a membership plan must be selected before continuing */
+  function validateStep2() {
+    if (!selectedPlan) {
+      showToast('Please select a membership plan first.', 'error');
+      return;
+    }
+    regNext(3);
+  }
+
   function proceedToPayment() {
     const check = document.getElementById('reg-terms-check');
     if (!check || !check.checked) { showToast('Please agree to the Terms & Policy first', 'error'); return; }
     regNext(4);
+  }
+
+  /** Handle proof-of-payment file selection (GCash / PayMaya) */
+  function handleProofUpload(input) {
+    const file = input.files && input.files[0];
+    if (!file) { selectedProofFile = null; return; }
+
+    const maxBytes = 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      showToast('File is too large. Maximum size is 10MB.', 'error');
+      input.value = '';
+      selectedProofFile = null;
+      return;
+    }
+
+    selectedProofFile = file;
+
+    const label = document.getElementById('reg-upload-label');
+    const icon  = document.getElementById('reg-upload-icon');
+    if (icon)  icon.textContent = '✅';
+    if (label) label.innerHTML = `Selected: ${file.name}<br><span style="font-size:11px;">Click to change file</span>`;
+
+    const preview = document.getElementById('reg-proof-preview');
+    if (preview && file.type.startsWith('image/')) {
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = 'block';
+    } else if (preview) {
+      preview.style.display = 'none';
+      preview.removeAttribute('src');
+    }
   }
 
   function selectPlan(card, plan) {
@@ -99,6 +172,19 @@ const LoginPage = (() => {
     const cashNote = document.getElementById('pay-cash-note');
     if (upload)   upload.style.display   = method === 'gcash' ? 'block' : 'none';
     if (cashNote) cashNote.style.display = method === 'cash'  ? 'block' : 'none';
+
+    // Switching methods resets any previously selected proof file
+    if (method !== 'gcash') {
+      selectedProofFile = null;
+      const fileInput = document.getElementById('reg-proof-file');
+      if (fileInput) fileInput.value = '';
+      const preview = document.getElementById('reg-proof-preview');
+      if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+      const label = document.getElementById('reg-upload-label');
+      const icon  = document.getElementById('reg-upload-icon');
+      if (icon)  icon.textContent = '📤';
+      if (label) label.innerHTML = 'Upload Proof of Payment<br><span style="font-size:11px;">PNG, JPG, PDF up to 10MB</span>';
+    }
   }
 
   function completeRegistration() {
@@ -141,25 +227,29 @@ const LoginPage = (() => {
       regNext(4);
       return;
     }
+    if (selectedPayment === 'gcash' && !selectedProofFile) {
+      showToast('Please upload your proof of payment.', 'error');
+      regNext(4);
+      return;
+    }
 
-    const payload = {
-      first_name: firstName,
-      last_name:  lastName,
-      email:      email,
-      phone:      phone,
-      birthday:   birthday,
-      password:   password,
-      plan:       selectedPlan,
-      payment_method: selectedPayment
-    };
+    const formData = new FormData();
+    formData.append('first_name', firstName);
+    formData.append('last_name',  lastName);
+    formData.append('email',      email);
+    formData.append('phone',      phone);
+    formData.append('birthday',   birthday);
+    formData.append('password',   password);
+    formData.append('plan',       selectedPlan);
+    formData.append('payment_method', selectedPayment);
+    if (selectedProofFile) formData.append('proof', selectedProofFile);
 
     const submitBtn = document.querySelector('#reg-step-4 .btn-red');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'SUBMITTING...'; }
 
     fetch('/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: formData
     })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
@@ -180,7 +270,7 @@ const LoginPage = (() => {
       });
   }
 
-  return { init, detectRoleHint, handleLogin, doLogout, regNext, proceedToPayment, selectPlan, selectPayment, completeRegistration };
+  return { init, detectRoleHint, handleLogin, doLogout, regNext, validateStep1, validateStep2, proceedToPayment, selectPlan, selectPayment, handleProofUpload, completeRegistration };
 })();
 
 
@@ -196,8 +286,11 @@ document.addEventListener('DOMContentLoaded', () => {
   window.detectRoleHint       = LoginPage.detectRoleHint;
   window.handleLogin          = LoginPage.handleLogin;
   window.regNext              = LoginPage.regNext;
+  window.validateStep1        = LoginPage.validateStep1;
+  window.validateStep2        = LoginPage.validateStep2;
   window.proceedToPayment     = LoginPage.proceedToPayment;
   window.selectPlan           = LoginPage.selectPlan;
   window.selectPayment        = LoginPage.selectPayment;
+  window.handleProofUpload    = LoginPage.handleProofUpload;
   window.completeRegistration = LoginPage.completeRegistration;
 });

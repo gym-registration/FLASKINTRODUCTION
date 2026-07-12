@@ -9,6 +9,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from datetime import datetime, timezone, date, timedelta
 
 
@@ -17,6 +18,12 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = ('mysql+pymysql://root:admin123@127.0.0.1:3306/gym_db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# ── Payment proof uploads ────────────────────────────────────
+PROOF_UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads', 'payment_proofs')
+PROOF_ALLOWED_EXT   = {'png', 'jpg', 'jpeg', 'pdf'}
+PROOF_MAX_BYTES     = 10 * 1024 * 1024  # 10MB
+os.makedirs(PROOF_UPLOAD_FOLDER, exist_ok=True)
 
 # ── Flask-Mail configuration ─────────────────────────────────
 # Set these as real environment variables (don't hardcode credentials here).
@@ -296,6 +303,27 @@ def register():
     if User.query.filter_by(email=email).first() is not None:
         return jsonify(success=False, error='An account with this email already exists.'), 409
 
+    # ── Proof of payment (required for GCash / PayMaya, not for cash) ──
+    proof_file = request.files.get('proof')
+    proof_relative_path = None
+    if pay_method == 'gcash':
+        if not proof_file or not proof_file.filename:
+            return jsonify(success=False, error='Please upload your proof of payment.'), 400
+
+        ext = proof_file.filename.rsplit('.', 1)[-1].lower() if '.' in proof_file.filename else ''
+        if ext not in PROOF_ALLOWED_EXT:
+            return jsonify(success=False, error='Proof of payment must be a PNG, JPG, or PDF file.'), 400
+
+        proof_file.seek(0, os.SEEK_END)
+        size = proof_file.tell()
+        proof_file.seek(0)
+        if size > PROOF_MAX_BYTES:
+            return jsonify(success=False, error='Proof of payment file is too large (max 10MB).'), 400
+
+        safe_name = secure_filename(f"{secrets.token_hex(8)}_{proof_file.filename}")
+        proof_file.save(os.path.join(PROOF_UPLOAD_FOLDER, safe_name))
+        proof_relative_path = f"uploads/payment_proofs/{safe_name}"
+
     birthday_date = None
     if birthday:
         try:
@@ -345,6 +373,7 @@ def register():
             plan_id=plan.id,
             amount=plan.price,
             method=pay_method or 'unspecified',
+            proof_image_path=proof_relative_path,
             status='pending',
         )
         db.session.add(new_payment)
