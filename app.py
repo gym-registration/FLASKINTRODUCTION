@@ -189,8 +189,11 @@ class Announcement(db.Model):
 
 
 # ── Routes ────────────────────────────────────────────────────
-
 @app.route('/')
+@app.route('/home')
+def home():
+    return render_template('home.html')
+
 @app.route('/trmem')
 @app.route('/trmem.html')
 @app.route('/login', methods=['GET', 'POST'])
