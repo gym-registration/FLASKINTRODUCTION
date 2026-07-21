@@ -166,6 +166,30 @@ body::before {
   letter-spacing: 2px;
 }
 
+/* ── Flash messages (login/register/reset feedback) ── */
+.flash-messages {
+  margin-bottom: 18px;
+}
+.flash {
+  padding: 12px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.flash:last-child { margin-bottom: 0; }
+.flash.error {
+  background: rgba(230, 30, 37, 0.12);
+  border: 1px solid rgba(230, 30, 37, 0.35);
+  color: var(--red);
+}
+.flash.success {
+  background: rgba(0, 230, 118, 0.1);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+  color: var(--green);
+}
+
 /* Register screen */
 #screen-register {
   align-items: center;
@@ -610,6 +634,7 @@ body::before {
 .form-input::placeholder { color: #444; }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-row-4 { display: grid; grid-template-columns: 2fr 1fr 2fr 1fr; gap: 12px; }
 
 /* Password field with show/hide eye toggle */
 .password-field { position: relative; }
@@ -876,6 +901,7 @@ body.role-member .sidebar-role           { color: var(--green); }
   .dashboard-layout { flex-direction: column; }
   .grid-2, .grid-3  { grid-template-columns: 1fr; }
   .form-row         { grid-template-columns: 1fr; }
+  .form-row-4       { grid-template-columns: 1fr 1fr; }
   .stats-grid       { grid-template-columns: 1fr 1fr; }
   .login-box, .register-box { padding: 32px 20px; }
 }

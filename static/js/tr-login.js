@@ -189,7 +189,9 @@ const LoginPage = (() => {
 
   function completeRegistration() {
     const firstName = _val('reg-fname');
+    const middleInitial = _val('reg-mi');
     const lastName  = _val('reg-lname');
+    const extensionName = _val('reg-ext');
     const email     = _val('reg-email');
     const phone     = _val('reg-phone');
     const birthday  = _val('reg-bday');
@@ -235,7 +237,9 @@ const LoginPage = (() => {
 
     const formData = new FormData();
     formData.append('first_name', firstName);
+    formData.append('middle_initial', middleInitial);
     formData.append('last_name',  lastName);
+    formData.append('extension_name', extensionName);
     formData.append('email',      email);
     formData.append('phone',      phone);
     formData.append('birthday',   birthday);

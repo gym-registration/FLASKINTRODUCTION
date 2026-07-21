@@ -134,7 +134,7 @@
           <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {% for m in members %}
-            <tr data-id="{{ m.id }}" data-plan="{{ m.plan }}" data-phone="{{ m.phone or '' }}" data-expiry-iso="{{ m.expiry_date.isoformat() if m.expiry_date else '' }}">
+            <tr data-id="{{ m.id }}" data-plan="{{ m.plan }}" data-phone="{{ m.phone or '' }}" data-expiry-iso="{{ m.expiry_date.isoformat() if m.expiry_date else '' }}" data-first-name="{{ m.first_name }}" data-middle-initial="{{ m.middle_initial or '' }}" data-last-name="{{ m.last_name }}" data-extension-name="{{ m.extension_name or '' }}">
               <td>#{{ m.id }}</td><td>{{ m.name }}</td><td>{{ m.email }}</td><td>{{ m.plan }}</td><td>{{ m.expiry }}</td>
               <td>
                 {% if m.status == 'Active' %}
@@ -176,6 +176,11 @@
               <div style="margin-top:8px;"><span class="badge badge-blue">Pending</span></div>
             </div>
             <div style="display:flex;gap:8px;">
+              {% if p.proof_image_path %}
+              <button class="btn btn-sm btn-outline" data-proof-url="{{ url_for('static', filename=p.proof_image_path) }}" onclick="viewPaymentProof(this.dataset.proofUrl)">👁 View Proof</button>
+              {% else %}
+              <span class="badge badge-muted" style="align-self:center;">No proof (cash)</span>
+              {% endif %}
               <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Approve</button>
               <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
             </div>
@@ -328,13 +333,29 @@
 <!-- ══════════════════════════════════
      MODALS
 ══════════════════════════════════ -->
+<div class="modal-overlay" id="view-proof-modal">
+  <div class="modal" style="max-width:520px;text-align:center;">
+    <button class="modal-close" onclick="closeModal('view-proof-modal')">✕</button>
+    <div class="modal-title">PAYMENT PROOF</div>
+    <div id="proof-modal-body">
+      <img id="proof-modal-img" src="" alt="Payment proof" style="display:none;max-width:100%;max-height:60vh;border-radius:6px;border:1px solid var(--border);">
+      <div id="proof-modal-pdf-note" style="display:none;">
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">This proof was uploaded as a PDF file.</p>
+        <a id="proof-modal-pdf-link" href="#" target="_blank" class="btn btn-red" style="display:inline-block;">OPEN PDF</a>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="add-member-modal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('add-member-modal')">✕</button>
     <div class="modal-title">ADD NEW MEMBER</div>
-    <div class="form-row">
+    <div class="form-row-4">
       <div class="form-group"><label class="form-label">First Name</label><input id="add-member-fname" class="form-input" placeholder="Juan"></div>
+      <div class="form-group"><label class="form-label">Middle Initial</label><input id="add-member-mi" class="form-input" placeholder="D" maxlength="5"></div>
       <div class="form-group"><label class="form-label">Last Name</label> <input id="add-member-lname" class="form-input" placeholder="Dela Cruz"></div>
+      <div class="form-group"><label class="form-label">Extension Name</label><input id="add-member-ext" class="form-input" placeholder="Jr., Sr., III (optional)" maxlength="10"></div>
     </div>
     <div class="form-group"><label class="form-label">Email</label><input id="add-member-email" class="form-input" type="email" placeholder="juan@email.com"></div>
     <div class="form-group"><label class="form-label">Phone</label><input id="add-member-phone" class="form-input" placeholder="09171234567" maxlength="11" inputmode="numeric" pattern="09\d{9}" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)"></div>
@@ -353,9 +374,11 @@
   <div class="modal">
     <button class="modal-close" onclick="closeModal('edit-member-modal')">✕</button>
     <div class="modal-title">EDIT MEMBER</div>
-    <div class="form-row">
+    <div class="form-row-4">
       <div class="form-group"><label class="form-label">First Name</label><input id="edit-member-fname" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Middle Initial</label><input id="edit-member-mi" class="form-input" placeholder="D" maxlength="5"></div>
       <div class="form-group"><label class="form-label">Last Name</label><input id="edit-member-lname" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Extension Name</label><input id="edit-member-ext" class="form-input" placeholder="Jr., Sr., III (optional)" maxlength="10"></div>
     </div>
     <div class="form-group"><label class="form-label">Email</label><input id="edit-member-email" class="form-input" type="email"></div>
     <div class="form-group"><label class="form-label">Phone</label><input id="edit-member-phone" class="form-input" placeholder="09171234567" maxlength="11" inputmode="numeric" pattern="09\d{9}" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)"></div>

@@ -52,7 +52,7 @@
       <div class="user-info">
         <div class="user-avatar" id="sidebar-user-avatar" style="background:var(--green);color:#000;">{{ (member.first_name[0] ~ member.last_name[0])|upper }}</div>
         <div>
-          <div class="user-name"  id="sidebar-user-name">{{ member.first_name }} {{ member.last_name }}</div>
+          <div class="user-name"  id="sidebar-user-name">{{ member.full_name }}</div>
           <div class="user-email" id="sidebar-user-email">{{ member.email }}</div>
         </div>
       </div>
@@ -75,7 +75,7 @@
           <div class="card-logo logo-badge">
             <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
           </div>
-          <div class="card-name" id="member-card-name">{{ member.first_name }} {{ member.last_name }}</div>
+          <div class="card-name" id="member-card-name">{{ member.full_name }}</div>
           <div class="card-id">MBR-{{ '%04d'|format(member.id) }} · {{ member.email }}</div>
           <div class="card-plan">{{ plan.name if plan else 'No Active Plan' }}</div>
           <div class="card-expiry">{% if plan %}Valid until: {{ plan.expiry_date }}{% else %}No membership on file{% endif %}</div>

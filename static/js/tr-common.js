@@ -286,6 +286,9 @@ function verifyPayment(btn, action) {
       }
       buttons.forEach(b => b.remove());
       showToast(data.message, data.status === 'rejected' ? 'error' : 'success');
+      // Reload so the card moves out of Pending Verifications and the
+      // newly-verified payment appears in Payment History below.
+      setTimeout(() => window.location.reload(), 900);
     })
     .catch(() => {
       showToast('Could not reach the server. Please try again.', 'error');

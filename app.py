@@ -42,11 +42,29 @@ mail = Mail(app)
 
 db = SQLAlchemy(app)
 
+
+def _format_full_name(first_name, last_name, middle_initial=None, extension_name=None):
+    """Build 'First M.I. Last Ext.' from parts, skipping any that are blank."""
+    parts = [first_name]
+    if middle_initial:
+        mi = middle_initial.strip().rstrip('.')
+        if mi:
+            parts.append(f'{mi}.')
+    parts.append(last_name)
+    full = ' '.join(p for p in parts if p)
+    if extension_name and extension_name.strip():
+        full += f' {extension_name.strip()}'
+    return full
+
+
+
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     first_name = db.Column(db.String(80), nullable=False)
+    middle_initial = db.Column(db.String(5), nullable=True)
     last_name = db.Column(db.String(80), nullable=False)
+    extension_name = db.Column(db.String(10), nullable=True)
     email = db.Column(db.String(120), nullable=False, unique=True, index=True)
     phone = db.Column(db.String(20), nullable=True)
     birthday = db.Column(db.Date, nullable=True)
@@ -64,6 +82,10 @@ class User(db.Model):
     recorded_payments= db.relationship('Payment', foreign_keys='Payment.recorded_by_id', back_populates='recorded_by')
     attendance       = db.relationship('Attendance', foreign_keys='Attendance.member_id', back_populates='member', cascade='all, delete-orphan')
     body_goals       = db.relationship('BodyGoal', back_populates='member', cascade='all, delete-orphan')
+
+    @property
+    def full_name(self):
+        return _format_full_name(self.first_name, self.last_name, self.middle_initial, self.extension_name)
 
     def __repr__(self):
         return f"<User {self.id} {self.email} [{self.role}]>"
@@ -183,13 +205,13 @@ def login():
 
         user = User.query.filter_by(email=email).first()
         if user is None or not check_password_hash(user.password, password):
-            flash('Email or password is incorrect.', 'error')
+            flash('Invalid credentials.', 'error')
             return render_template('trmem.html')
 
         session['user_id'] = user.id
         session['role']    = user.role
         session['email']   = user.email
-        session['name']    = f"{user.first_name} {user.last_name}"
+        session['name']    = user.full_name
         return redirect(url_for(user.role))
 
     return render_template('trmem.html')
@@ -282,7 +304,9 @@ def register():
     data = request.get_json(silent=True) or request.form
 
     first_name = (data.get('first_name') or '').strip()
+    middle_initial = (data.get('middle_initial') or '').strip()
     last_name  = (data.get('last_name')  or '').strip()
+    extension_name = (data.get('extension_name') or '').strip()
     email      = (data.get('email')      or '').strip().lower()
     phone      = (data.get('phone')      or '').strip()
     birthday   = (data.get('birthday')   or '').strip()
@@ -334,7 +358,9 @@ def register():
     # ── Create the user ──
     new_user = User(
         first_name=first_name,
+        middle_initial=middle_initial or None,
         last_name=last_name,
+        extension_name=extension_name or None,
         email=email,
         phone=phone or None,
         birthday=birthday_date,
@@ -401,7 +427,9 @@ def admin_add_member():
     data = request.get_json(silent=True) or request.form
 
     first_name = (data.get('first_name') or '').strip()
+    middle_initial = (data.get('middle_initial') or '').strip()
     last_name  = (data.get('last_name')  or '').strip()
+    extension_name = (data.get('extension_name') or '').strip()
     email      = (data.get('email')      or '').strip().lower()
     phone      = (data.get('phone')      or '').strip()
     plan_name  = (data.get('plan')       or '').strip()
@@ -424,7 +452,9 @@ def admin_add_member():
     temp_password = _generate_temp_password()
     new_user = User(
         first_name=first_name,
+        middle_initial=middle_initial or None,
         last_name=last_name,
+        extension_name=extension_name or None,
         email=email,
         phone=phone or None,
         password=generate_password_hash(temp_password),
@@ -451,8 +481,13 @@ def admin_add_member():
         message='Member added successfully.',
         member={
             'id': new_user.id,
-            'name': f'{first_name} {last_name}',
+            'name': new_user.full_name,
+            'first_name': new_user.first_name,
+            'middle_initial': new_user.middle_initial or '',
+            'last_name': new_user.last_name,
+            'extension_name': new_user.extension_name or '',
             'email': email,
+            'phone': new_user.phone or '',
             'plan': plan.name,
             'expiry': expiry.strftime('%b %d, %Y'),
             'temp_password': temp_password,
@@ -472,7 +507,9 @@ def admin_edit_member(member_id):
     data = request.get_json(silent=True) or request.form
 
     first_name = (data.get('first_name') or '').strip()
+    middle_initial = (data.get('middle_initial') or '').strip()
     last_name  = (data.get('last_name')  or '').strip()
+    extension_name = (data.get('extension_name') or '').strip()
     email      = (data.get('email')      or '').strip().lower()
     phone      = (data.get('phone')      or '').strip()
     plan_name  = (data.get('plan')       or '').strip()
@@ -490,7 +527,9 @@ def admin_edit_member(member_id):
         return jsonify(success=False, error='Another account already uses this email.'), 409
 
     user.first_name = first_name
+    user.middle_initial = middle_initial or None
     user.last_name  = last_name
+    user.extension_name = extension_name or None
     user.email      = email
     user.phone      = phone or None
 
@@ -528,8 +567,13 @@ def admin_edit_member(member_id):
     return jsonify(
         success=True,
         member={
-            'name': f'{first_name} {last_name}',
+            'name': user.full_name,
+            'first_name': user.first_name,
+            'middle_initial': user.middle_initial or '',
+            'last_name': user.last_name,
+            'extension_name': user.extension_name or '',
             'email': email,
+            'phone': user.phone or '',
             'plan': plan_display,
             'expiry': expiry_display,
             'expiry_iso': expiry_iso,
@@ -698,7 +742,7 @@ def staff_record_payment():
         success=True,
         message='Payment recorded successfully.',
         payment={
-            'member_name': f'{member.first_name} {member.last_name}',
+            'member_name': member.full_name,
             'plan': plan.name,
             'amount': str(plan.price),
             'expiry': membership.expiry_date.strftime('%b %d, %Y'),
@@ -728,7 +772,7 @@ def staff_checkin():
     return jsonify(
         success=True,
         message='Check-in recorded.',
-        member_name=f'{member.first_name} {member.last_name}',
+        member_name=member.full_name,
         time=now.strftime('%I:%M %p').lstrip('0'),
     )
 
@@ -763,7 +807,7 @@ def staff_checkout():
     return jsonify(
         success=True,
         message='Check-out recorded.',
-        member_name=f'{member.first_name} {member.last_name}',
+        member_name=member.full_name,
         time=now.strftime('%I:%M %p').lstrip('0'),
         duration=duration_text,
     )
@@ -897,7 +941,7 @@ def staff():
             h, m = divmod(mins, 60)
             duration_text = f'{h}h {m}m' if h else f'{m}m'
         attendance_today.append({
-            'member_name': f'{a.member.first_name} {a.member.last_name}',
+            'member_name': a.member.full_name,
             'check_in': a.check_in.strftime('%I:%M %p').lstrip('0'),
             'check_out': a.check_out.strftime('%I:%M %p').lstrip('0') if a.check_out else '—',
             'duration': duration_text,
@@ -958,8 +1002,13 @@ def _get_members_with_plans():
 
         members.append({
             'id': user.id,
-            'name': f'{user.first_name} {user.last_name}',
+            'name': user.full_name,
+            'first_name': user.first_name,
+            'middle_initial': user.middle_initial or '',
+            'last_name': user.last_name,
+            'extension_name': user.extension_name or '',
             'email': user.email,
+            'phone': user.phone or '',
             'plan': plan_name,
             'expiry': expiry_text,
             'expiry_date': expiry_date,
@@ -986,11 +1035,12 @@ def admin():
     pending_payments = [{
         'id': p.id,
         'txn': f'TXN-{9000 + p.id}',
-        'member_name': f'{p.member.first_name} {p.member.last_name}',
+        'member_name': p.member.full_name,
         'plan': p.plan.name if p.plan else '—',
         'method': p.method,
         'reference': p.reference_number or '—',
         'amount': f'{float(p.amount):,.2f}',
+        'proof_image_path': p.proof_image_path,
     } for p in pending_payments_rows]
 
     payment_history_rows = (
@@ -1002,7 +1052,7 @@ def admin():
     )
     payment_history = [{
         'txn': f'TXN-{9000 + p.id}',
-        'member_name': f'{p.member.first_name} {p.member.last_name}',
+        'member_name': p.member.full_name,
         'plan': p.plan.name if p.plan else '—',
         'method': p.method,
         'amount': f'{float(p.amount):,.2f}',

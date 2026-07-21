@@ -49,7 +49,9 @@ const AdminModule = (() => {
   /** Add a new member row from modal form */
   function addMember() {
     const firstName = _val('add-member-fname');
+    const middleInitial = _val('add-member-mi');
     const lastName  = _val('add-member-lname');
+    const extensionName = _val('add-member-ext');
     const email     = _val('add-member-email');
     const phone     = _val('add-member-phone');
     const planText  = document.getElementById('add-member-plan')?.value || 'Monthly';
@@ -71,11 +73,13 @@ const AdminModule = (() => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        first_name: firstName,
-        last_name:  lastName,
-        email:      email,
-        phone:      phone,
-        plan:       planName
+        first_name:     firstName,
+        middle_initial: middleInitial,
+        last_name:      lastName,
+        extension_name: extensionName,
+        email:          email,
+        phone:          phone,
+        plan:           planName
       })
     })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
@@ -90,10 +94,14 @@ const AdminModule = (() => {
         const tbody = document.querySelector('#members-table tbody');
         if (tbody) {
           const row = document.createElement('tr');
-          row.dataset.id        = m.id;
-          row.dataset.plan      = m.plan;
-          row.dataset.phone     = m.phone || '';
-          row.dataset.expiryIso = m.expiry_iso || '';
+          row.dataset.id            = m.id;
+          row.dataset.plan          = m.plan;
+          row.dataset.phone         = m.phone || '';
+          row.dataset.expiryIso     = m.expiry_iso || '';
+          row.dataset.firstName     = m.first_name || '';
+          row.dataset.middleInitial = m.middle_initial || '';
+          row.dataset.lastName      = m.last_name || '';
+          row.dataset.extensionName = m.extension_name || '';
           row.innerHTML = `
             <td>#${m.id}</td>
             <td>${m.name}</td>
@@ -109,7 +117,7 @@ const AdminModule = (() => {
         }
 
         closeModal('add-member-modal');
-        ['add-member-fname', 'add-member-lname', 'add-member-email', 'add-member-phone'].forEach(id => {
+        ['add-member-fname', 'add-member-mi', 'add-member-lname', 'add-member-ext', 'add-member-email', 'add-member-phone'].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.value = '';
         });
@@ -133,11 +141,11 @@ const AdminModule = (() => {
     const cells = row.querySelectorAll('td');
     if (cells.length < 7) return;
 
-    const [firstName, ...rest] = cells[1].textContent.trim().split(' ');
-
     editingMemberId = row.dataset.id;
-    document.getElementById('edit-member-fname').value  = firstName || '';
-    document.getElementById('edit-member-lname').value  = rest.join(' ');
+    document.getElementById('edit-member-fname').value  = row.dataset.firstName     || '';
+    document.getElementById('edit-member-mi').value     = row.dataset.middleInitial || '';
+    document.getElementById('edit-member-lname').value  = row.dataset.lastName      || '';
+    document.getElementById('edit-member-ext').value    = row.dataset.extensionName || '';
     document.getElementById('edit-member-email').value  = cells[2].textContent.trim();
     document.getElementById('edit-member-phone').value  = row.dataset.phone || '';
     document.getElementById('edit-member-expiry').value = row.dataset.expiryIso || '';
@@ -155,7 +163,9 @@ const AdminModule = (() => {
   /** Save the Edit Member modal's fields to the server */
   function saveEditMember() {
     const firstName = _val('edit-member-fname');
+    const middleInitial = _val('edit-member-mi');
     const lastName  = _val('edit-member-lname');
+    const extensionName = _val('edit-member-ext');
     const email     = _val('edit-member-email');
     const phone     = _val('edit-member-phone');
     const planText  = document.getElementById('edit-member-plan')?.value || '';
@@ -178,12 +188,14 @@ const AdminModule = (() => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        first_name: firstName,
-        last_name:  lastName,
-        email:      email,
-        phone:      phone,
-        plan:       planName,
-        expiry:     expiry
+        first_name:     firstName,
+        middle_initial: middleInitial,
+        last_name:      lastName,
+        extension_name: extensionName,
+        email:          email,
+        phone:          phone,
+        plan:           planName,
+        expiry:         expiry
       })
     })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
@@ -202,8 +214,13 @@ const AdminModule = (() => {
           cells[2].textContent = m.email;
           cells[3].textContent = m.plan;
           cells[4].textContent = m.expiry;
-          row.dataset.plan      = m.plan;
-          row.dataset.expiryIso = m.expiry_iso;
+          row.dataset.plan          = m.plan;
+          row.dataset.expiryIso     = m.expiry_iso;
+          row.dataset.phone         = m.phone || '';
+          row.dataset.firstName     = m.first_name || '';
+          row.dataset.middleInitial = m.middle_initial || '';
+          row.dataset.lastName      = m.last_name || '';
+          row.dataset.extensionName = m.extension_name || '';
         }
 
         closeModal('edit-member-modal');
@@ -351,9 +368,33 @@ const AdminModule = (() => {
     return expiry;
   }
 
+  /** Show the uploaded payment proof (image or PDF) in a modal before approving/rejecting */
+  function viewPaymentProof(url) {
+    const img     = document.getElementById('proof-modal-img');
+    const pdfNote = document.getElementById('proof-modal-pdf-note');
+    const pdfLink = document.getElementById('proof-modal-pdf-link');
+    if (!img || !pdfNote || !pdfLink) return;
+
+    const isPdf = /\.pdf($|\?)/i.test(url);
+
+    if (isPdf) {
+      img.style.display = 'none';
+      img.removeAttribute('src');
+      pdfLink.href = url;
+      pdfNote.style.display = 'block';
+    } else {
+      pdfNote.style.display = 'none';
+      img.src = url;
+      img.style.display = 'block';
+    }
+
+    openModal('view-proof-modal');
+  }
+
   return {
     init, tab, addMember, openEditMemberModal, saveEditMember, deleteMemberRow,
-    generateAnalyticsReport, refreshCurrentReport, exportReportCSV, exportReportPDF
+    generateAnalyticsReport, refreshCurrentReport, exportReportCSV, exportReportPDF,
+    viewPaymentProof
   };
 })();
 
@@ -375,4 +416,5 @@ document.addEventListener('DOMContentLoaded', () => {
   window.refreshCurrentReport    = AdminModule.refreshCurrentReport;
   window.exportCurrentReportCSV  = AdminModule.exportReportCSV;
   window.exportCurrentReportPDF  = AdminModule.exportReportPDF;
+  window.viewPaymentProof        = AdminModule.viewPaymentProof;
 });
