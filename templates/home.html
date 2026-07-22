@@ -44,25 +44,21 @@
 <section class="hero" id="top">
   <div class="section-wrap">
     <div>
-      <div class="hero-eyebrow">Train Smarter. Get Stronger. Stay Consistent.</div>
+      <div class="hero-tagline">"Gym Registration and Management System for Power Gym"</div>
       <h1 class="hero-title">BUILD YOUR<br><span class="accent">BEST BODY</span></h1>
       <p class="hero-sub">
         Join Power Gym today and enjoy modern equipment, a supportive
         community, and flexible membership plans built around your goals.
       </p>
       <div class="hero-cta">
-        <p class="hero-tagline">"Gym Registration and Management System for Power Gym"</p>
-      </div>
-      <div class="hero-stats">
-        
-        
+        <p class="hero-eyebrow">Train Smarter. Get Stronger. Stay Consistent.</p>
       </div>
     </div>
 
     <div class="hero-visual">
       <div class="hv-glow"></div>
       <img class="hv-badge" src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym badge">
-      <div class="hv-tag"><strong>Now open:</strong> Online registration &amp; easy payment via GCashor cash.</div>
+      <div class="hv-tag"><strong>Now open:</strong> Online registration &amp; easy payment via GCash or cash.</div>
     </div>
   </div>
 </section>
@@ -181,19 +177,11 @@
       <div class="section-eyebrow">Where You'll Train</div>
       <div class="section-title">OUR <span class="accent">FACILITIES</span></div>
     </div>
-    <div class="facility-grid">
-  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-weight.png') }});">
-    <span class="fi">🏋️</span><span class="label">Weight Area</span>
-  </div>
-  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-cardio.png') }});">
-    <span class="fi">🏃</span><span class="label">Cardio Area</span>
-  </div>
-  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-functional.png') }});">
-    <span class="fi">🤸</span><span class="label">Functional Training</span>
-  </div>
-  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-reception.png') }});">
-    <span class="fi">🛎️</span><span class="label">Reception</span>
-  </div>
+  <div class="facility-grid">
+  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-weight.png') }}"><span class="fi">🏋️</span><span class="label">Weight Area</span></div>
+  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-cardio.png') }}"><span class="fi">🏃</span><span class="label">Cardio Area</span></div>
+  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-functional.png') }}"><span class="fi">🤸</span><span class="label">Functional Training</span></div>
+  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-reception.png') }}"><span class="fi">🛎️</span><span class="label">Reception</span></div>
 </div>
   </div>
 </section>
@@ -277,8 +265,7 @@
         <div class="footer-col-title">Follow Us</div>
         <div class="footer-social">
           <a href="#" aria-label="Facebook">f</a>
-          <a href="#" aria-label="Instagram">ig</a>
-          <a href="#" aria-label="YouTube">yt</a>
+         
         </div>
       </div>
     </div>
@@ -286,6 +273,12 @@
   </div>
 </footer>
 
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.facility-tile[data-bg]').forEach(tile => {
+    const url = tile.dataset.bg;
+    if (url) tile.style.backgroundImage = `url('${url}')`;
+  });
+});
 <script>
 /* ── Scrollspy: highlight the nav link for the section currently in view ── */
 document.addEventListener('DOMContentLoaded', () => {
