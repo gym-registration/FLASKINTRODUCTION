@@ -1009,6 +1009,15 @@ body.home-page { overflow-x: hidden; }
 
 .hero-sub { font-size: 15px; color: var(--muted); line-height: 1.7; max-width: 460px; margin-bottom: 30px; }
 
+.hero-tagline {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 30px; font-weight: 900;
+  font-style: italic;
+  letter-spacing: 1.5px; text-transform: uppercase; color: var(--white);
+  margin-top: 10px; margin-bottom: 30px;
+  text-align: center;
+  margin-left: -50px; 
+}
+
 .hero-cta { display: flex; gap: 14px; margin-bottom: 40px; }
 .hero-cta .btn { padding: 15px 28px; font-size: 13px; }
 

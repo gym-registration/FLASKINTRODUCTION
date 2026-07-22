@@ -50,7 +50,9 @@
         Join Power Gym today and enjoy modern equipment, a supportive
         community, and flexible membership plans built around your goals.
       </p>
-      
+      <div class="hero-cta">
+        <p class="hero-tagline">"Gym Registration and Management System for Power Gym"</p>
+      </div>
       <div class="hero-stats">
         
         
@@ -180,11 +182,19 @@
       <div class="section-title">OUR <span class="accent">FACILITIES</span></div>
     </div>
     <div class="facility-grid">
-      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-weight.png') }}');"><span class="label">Weight Area</span></div>
-      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-cardio.png') }}');"><span class="label">Cardio Area</span></div>
-      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-functional.png') }}');"><span class="label">Functional Training</span></div>
-      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-reception.png') }}');"><span class="label">Reception</span></div>
-    </div>
+  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-weight.png') }});">
+    <span class="fi">🏋️</span><span class="label">Weight Area</span>
+  </div>
+  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-cardio.png') }});">
+    <span class="fi">🏃</span><span class="label">Cardio Area</span>
+  </div>
+  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-functional.png') }});">
+    <span class="fi">🤸</span><span class="label">Functional Training</span>
+  </div>
+  <div class="facility-tile" style="background-image:url({{ url_for('static', filename='images/facility-reception.png') }});">
+    <span class="fi">🛎️</span><span class="label">Reception</span>
+  </div>
+</div>
   </div>
 </section>
 
