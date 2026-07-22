@@ -103,19 +103,23 @@
       <div class="form-row-4">
         <div class="form-group">
           <label class="form-label">First Name</label>
-          <input class="form-input" id="reg-fname" placeholder="Juan">
+          <input class="form-input" id="reg-fname" placeholder="Juan"
+                 oninput="this.value=this.value.replace(/[^A-Za-z\s'-]/g,'')">
         </div>
         <div class="form-group">
           <label class="form-label">Middle Initial</label>
-          <input class="form-input" id="reg-mi" placeholder="D" maxlength="5">
+          <input class="form-input" id="reg-mi" placeholder="D" maxlength="5"
+                 oninput="this.value=this.value.replace(/[^A-Za-z]/g,'')">
         </div>
         <div class="form-group">
           <label class="form-label">Last Name</label>
-          <input class="form-input" id="reg-lname" placeholder="Dela Cruz">
+          <input class="form-input" id="reg-lname" placeholder="Dela Cruz"
+                 oninput="this.value=this.value.replace(/[^A-Za-z\s'-]/g,'')">
         </div>
         <div class="form-group">
           <label class="form-label">Extension Name</label>
-          <input class="form-input" id="reg-ext" placeholder="Jr., Sr., III (optional)" maxlength="10">
+          <input class="form-input" id="reg-ext" placeholder="Jr., Sr., III (optional)" maxlength="10"
+                 oninput="this.value=this.value.replace(/[^A-Za-z.\s]/g,'')">
         </div>
       </div>
       <div class="form-group">
@@ -226,7 +230,7 @@
       <div class="panel-title" style="margin-bottom:16px;">Payment Method</div>
       <div class="payment-opts">
         <div class="pay-opt" onclick="selectPayment(this,'gcash')">
-          <span class="pay-icon">📱</span>GCash / PayMaya
+          <span class="pay-icon">📱</span>GCash
         </div>
         <div class="pay-opt" onclick="selectPayment(this,'cash')">
           <span class="pay-icon">💵</span>Cash at Gym

@@ -321,6 +321,15 @@ def register():
     if not first_name or not last_name or not email or not password:
         return jsonify(success=False, error='Please fill in all required fields.'), 400
 
+    if not _valid_name(first_name) or not _valid_name(last_name):
+        return jsonify(success=False, error='Names can only contain letters — no numbers.'), 400
+
+    if not _valid_name(middle_initial, extra_chars=''):
+        return jsonify(success=False, error='Middle initial can only contain letters.'), 400
+
+    if not _valid_name(extension_name, extra_chars=' .'):
+        return jsonify(success=False, error='Extension name can only contain letters.'), 400
+
     if len(password) < 8:
         return jsonify(success=False, error='Password must be at least 8 characters.'), 400
 
@@ -330,7 +339,7 @@ def register():
     if User.query.filter_by(email=email).first() is not None:
         return jsonify(success=False, error='An account with this email already exists.'), 409
 
-    # ── Proof of payment (required for GCash / PayMaya, not for cash) ──
+    # ── Proof of payment (required for GCash, not for cash) ──
     proof_file = request.files.get('proof')
     proof_relative_path = None
     if pay_method == 'gcash':
@@ -420,6 +429,13 @@ def _generate_temp_password(length=10):
 def _valid_phone(phone):
     """Phone number must be exactly 11 digits and start with '09' (PH mobile format)."""
     return phone.isdigit() and len(phone) == 11 and phone.startswith('09')
+
+
+def _valid_name(name, extra_chars=" '-"):
+    """Name fields must contain only letters (plus a few allowed punctuation chars) — no digits."""
+    if not name:
+        return True
+    return all(ch.isalpha() or ch in extra_chars for ch in name)
 
 
 @app.route('/admin/add-member', methods=['POST'])
@@ -820,42 +836,6 @@ def staff_checkout():
 def logout():
     session.clear()
     return redirect(url_for('login'))
-
-
-@app.route('/change-password', methods=['POST'])
-def change_password():
-    if 'user_id' not in session:
-        return jsonify(success=False, error='Please sign in again.'), 401
-
-    data = request.get_json(silent=True) or request.form
-    current_password = data.get('current_password') or ''
-    new_password      = data.get('new_password') or ''
-    confirm_password  = data.get('confirm_password') or ''
-
-    user = User.query.get(session['user_id'])
-    if user is None:
-        session.clear()
-        return jsonify(success=False, error='Please sign in again.'), 401
-
-    if not current_password or not new_password or not confirm_password:
-        return jsonify(success=False, error='Please fill in all fields.'), 400
-
-    if not check_password_hash(user.password, current_password):
-        return jsonify(success=False, error='Current password is incorrect.'), 400
-
-    if len(new_password) < 8:
-        return jsonify(success=False, error='New password must be at least 8 characters.'), 400
-
-    if new_password != confirm_password:
-        return jsonify(success=False, error='New password and confirmation do not match.'), 400
-
-    if check_password_hash(user.password, new_password):
-        return jsonify(success=False, error='New password must be different from your current password.'), 400
-
-    user.password = generate_password_hash(new_password)
-    db.session.commit()
-
-    return jsonify(success=True, message='Password changed successfully.')
 
 
 @app.route('/member')

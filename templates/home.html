@@ -24,9 +24,9 @@
       <ul class="nav-links">
         <li><a href="#top" class="active">Home</a></li>
         <li><a href="#membership">Membership</a></li>
-        <li><a href="#announcements">Announcements</a></li>
-        <li><a href="#schedule">Schedule</a></li>
         <li><a href="#programs">Programs</a></li>
+        <li><a href="#schedule">Schedule</a></li>
+        <li><a href="#announcements">Announcements</a></li>
         <li><a href="#contact">Contact</a></li>
       </ul>
     </nav>
@@ -50,12 +50,17 @@
         Join Power Gym today and enjoy modern equipment, a supportive
         community, and flexible membership plans built around your goals.
       </p>
+      
+      <div class="hero-stats">
+        
+        
+      </div>
     </div>
 
     <div class="hero-visual">
       <div class="hv-glow"></div>
       <img class="hv-badge" src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym badge">
-      <div class="hv-tag"><strong>Now open:</strong> Online registration &amp; easy payment via GCash, PayMaya, or cash.</div>
+      <div class="hv-tag"><strong>Now open:</strong> Online registration &amp; easy payment via GCashor cash.</div>
     </div>
   </div>
 </section>
@@ -175,13 +180,14 @@
       <div class="section-title">OUR <span class="accent">FACILITIES</span></div>
     </div>
     <div class="facility-grid">
-      <div class="facility-tile"><span class="fi">🏋️</span><span class="label">Weight Area</span></div>
-      <div class="facility-tile"><span class="fi">🏃</span><span class="label">Cardio Area</span></div>
-      <div class="facility-tile"><span class="fi">🤸</span><span class="label">Functional Training</span></div>
-      <div class="facility-tile"><span class="fi">🛎️</span><span class="label">Reception</span></div>
+      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-weight.png') }}');"><span class="label">Weight Area</span></div>
+      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-cardio.png') }}');"><span class="label">Cardio Area</span></div>
+      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-functional.png') }}');"><span class="label">Functional Training</span></div>
+      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-reception.png') }}');"><span class="label">Reception</span></div>
     </div>
   </div>
 </section>
+
 
 <!-- ═══════════════════════════════════════
      TESTIMONIALS
@@ -260,8 +266,9 @@
       <div>
         <div class="footer-col-title">Follow Us</div>
         <div class="footer-social">
-          <a href="https://www.facebook.com/search/top/?q=power%20fitness%20gym" target="_blank" rel="noopener" aria-label="Facebook">f</a>
-          <a href="https://www.facebook.com/messages/t/108939274361511" target="_blank" rel="noopener" aria-label="Messenger">m</a>
+          <a href="#" aria-label="Facebook">f</a>
+          <a href="#" aria-label="Instagram">ig</a>
+          <a href="#" aria-label="YouTube">yt</a>
         </div>
       </div>
     </div>

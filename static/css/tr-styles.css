@@ -1110,15 +1110,21 @@ body.home-page { overflow-x: hidden; }
 .facility-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .facility-tile {
   aspect-ratio: 4/3; border-radius: 8px; border: 1px solid var(--border);
-  background: linear-gradient(160deg, #1b1f29 0%, #0b0d12 100%);
+  background-color: #0b0d12; background-size: cover; background-position: center;
   display: flex; align-items: flex-end; padding: 14px; position: relative; overflow: hidden;
   transition: filter .2s, transform .2s;
 }
+.facility-tile::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.75) 100%);
+}
 .facility-tile:hover { filter: brightness(1.15); transform: translateY(-2px); }
-.facility-tile .fi { position: absolute; top: 16px; left: 16px; font-size: 22px; opacity: .8; }
 .facility-tile span.label {
+  position: relative; z-index: 1;
   font-family: 'Barlow Condensed', sans-serif; font-weight: 700; letter-spacing: 1.5px;
   text-transform: uppercase; font-size: 13px; color: var(--white);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 
 /* ── Trainers ── */

@@ -93,6 +93,10 @@ const LoginPage = (() => {
       showToast('Please fill in all required fields.', 'error');
       return;
     }
+    if (!/^[A-Za-z\s'-]+$/.test(firstName) || !/^[A-Za-z\s'-]+$/.test(lastName)) {
+      showToast('Names can only contain letters — no numbers.', 'error');
+      return;
+    }
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       showToast('Please enter a valid email address.', 'error');
       return;
@@ -128,7 +132,7 @@ const LoginPage = (() => {
     regNext(4);
   }
 
-  /** Handle proof-of-payment file selection (GCash / PayMaya) */
+  /** Handle proof-of-payment file selection (GCash) */
   function handleProofUpload(input) {
     const file = input.files && input.files[0];
     if (!file) { selectedProofFile = null; return; }
@@ -201,6 +205,21 @@ const LoginPage = (() => {
     // ── Client-side validation ──
     if (!firstName || !lastName || !email || !password) {
       showToast('Please fill in all required fields.', 'error');
+      regNext(1);
+      return;
+    }
+    if (!/^[A-Za-z\s'-]+$/.test(firstName) || !/^[A-Za-z\s'-]+$/.test(lastName)) {
+      showToast('Names can only contain letters — no numbers.', 'error');
+      regNext(1);
+      return;
+    }
+    if (middleInitial && !/^[A-Za-z]+$/.test(middleInitial)) {
+      showToast('Middle initial can only contain letters.', 'error');
+      regNext(1);
+      return;
+    }
+    if (extensionName && !/^[A-Za-z.\s]+$/.test(extensionName)) {
+      showToast('Extension name can only contain letters.', 'error');
       regNext(1);
       return;
     }
