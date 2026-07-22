@@ -296,6 +296,54 @@ function verifyPayment(btn, action) {
     });
 }
 
+/** Change password (used by admin/staff/member sidebars) — calls the real backend endpoint */
+function submitChangePassword() {
+  const currentEl = document.getElementById('cp-current');
+  const newEl     = document.getElementById('cp-new');
+  const confirmEl = document.getElementById('cp-confirm');
+
+  const current_password = currentEl?.value || '';
+  const new_password     = newEl?.value     || '';
+  const confirm_password = confirmEl?.value || '';
+
+  if (!current_password || !new_password || !confirm_password) {
+    showToast('Please fill in all fields.', 'error');
+    return;
+  }
+  if (new_password.length < 8) {
+    showToast('New password must be at least 8 characters.', 'error');
+    return;
+  }
+  if (new_password !== confirm_password) {
+    showToast('New password and confirmation do not match.', 'error');
+    return;
+  }
+
+  const btn = document.querySelector('#change-password-modal .btn-red');
+  if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+
+  fetch('/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password, new_password, confirm_password })
+  })
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+      if (btn) { btn.disabled = false; btn.textContent = 'SAVE PASSWORD'; }
+      if (!ok || !data.success) {
+        showToast(data.error || 'Failed to change password.', 'error');
+        return;
+      }
+      [currentEl, newEl, confirmEl].forEach(el => { if (el) el.value = ''; });
+      closeModal('change-password-modal');
+      showToast(data.message || 'Password changed successfully.', 'success');
+    })
+    .catch(() => {
+      if (btn) { btn.disabled = false; btn.textContent = 'SAVE PASSWORD'; }
+      showToast('Could not reach the server. Please try again.', 'error');
+    });
+}
+
 /** Plan card selection (generic — used on register page and member renewal) */
 function selectPlan(card, plan) {
   // Scope to the nearest plan-grid parent to avoid cross-section conflicts
@@ -373,6 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.buildAttGrid  = buildAttGrid;
   window.doLogout      = doLogout;
   window.verifyPayment = verifyPayment;
+  window.submitChangePassword = submitChangePassword;
   window.filterTable   = filterTable;
   window.togglePasswordVisibility = togglePasswordVisibility;
   window.goTo          = (screen) => Navigation.goToScreen(screen);

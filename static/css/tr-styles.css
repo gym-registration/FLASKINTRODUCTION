@@ -381,6 +381,28 @@ body::before {
 .user-name { font-size: 13px; font-weight: 600; }
 .user-email { font-size: 11px; color: var(--muted); }
 
+.btn-change-pass {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.btn-change-pass:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(245, 197, 24, 0.06);
+  box-shadow: 0 0 12px rgba(245, 197, 24, 0.2);
+}
+
 .btn-logout {
   width: 100%;
   background: transparent;

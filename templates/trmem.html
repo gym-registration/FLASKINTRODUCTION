@@ -25,14 +25,6 @@
       <div class="login-title">SIGN IN</div>
     </div>
 
-    <!-- Announcements panel -->
-    <div class="panel announcement-panel">
-      <div class="panel-header"><div class="panel-title">📢 ANNOUNCEMENTS</div></div>
-      <div class="panel-body">
-        TO ALL MEMBERS STARTING JULY 2025 — EVERYONE IS REQUIRED TO WEAR PROPER GYM ATTIRE
-      </div>
-    </div>
-
     <form action="{{ url_for('login') }}" method="post" class="login-form">
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}

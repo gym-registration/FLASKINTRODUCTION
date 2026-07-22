@@ -822,6 +822,42 @@ def logout():
     return redirect(url_for('login'))
 
 
+@app.route('/change-password', methods=['POST'])
+def change_password():
+    if 'user_id' not in session:
+        return jsonify(success=False, error='Please sign in again.'), 401
+
+    data = request.get_json(silent=True) or request.form
+    current_password = data.get('current_password') or ''
+    new_password      = data.get('new_password') or ''
+    confirm_password  = data.get('confirm_password') or ''
+
+    user = User.query.get(session['user_id'])
+    if user is None:
+        session.clear()
+        return jsonify(success=False, error='Please sign in again.'), 401
+
+    if not current_password or not new_password or not confirm_password:
+        return jsonify(success=False, error='Please fill in all fields.'), 400
+
+    if not check_password_hash(user.password, current_password):
+        return jsonify(success=False, error='Current password is incorrect.'), 400
+
+    if len(new_password) < 8:
+        return jsonify(success=False, error='New password must be at least 8 characters.'), 400
+
+    if new_password != confirm_password:
+        return jsonify(success=False, error='New password and confirmation do not match.'), 400
+
+    if check_password_hash(user.password, new_password):
+        return jsonify(success=False, error='New password must be different from your current password.'), 400
+
+    user.password = generate_password_hash(new_password)
+    db.session.commit()
+
+    return jsonify(success=True, message='Password changed successfully.')
+
+
 @app.route('/member')
 def member():
     if 'role' not in session:
