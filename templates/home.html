@@ -273,13 +273,9 @@
   </div>
 </footer>
 
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.facility-tile[data-bg]').forEach(tile => {
-    const url = tile.dataset.bg;
-    if (url) tile.style.backgroundImage = `url('${url}')`;
-  });
-});
+
 <script>
+  
 /* ── Scrollspy: highlight the nav link for the section currently in view ── */
 document.addEventListener('DOMContentLoaded', () => {
   const navLinks = Array.from(document.querySelectorAll('.nav-links a'));
