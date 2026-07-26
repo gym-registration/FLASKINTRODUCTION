@@ -87,13 +87,6 @@
 
       <div class="login-role-tag">NEW MEMBER REGISTRATION</div>
       <div class="login-title">JOIN POWER GYM</div>
-
-      <!-- Step progress indicator -->
-      <div class="step-indicator">
-        <div class="step-dot active" id="sdot-1"></div>
-        <div class="step-dot"        id="sdot-2"></div>
-        <div class="step-dot"        id="sdot-3"></div>
-      </div>
     </div><!-- /register-left -->
 
     <div class="register-right">
@@ -173,69 +166,7 @@
           Please open and read the Terms &amp; Policy before agreeing.
         </div>
       </div>
-      <button class="btn-primary" onclick="validateStep1()">CONTINUE →</button>
-    </div>
-
-    <!-- STEP 2: Plan Selection -->
-    <div id="reg-step-2" style="display:none;">
-      <div class="panel-title" style="margin-bottom:16px;">Select Membership Plan</div>
-      <div class="plan-grid">
-        <div class="plan-card" onclick="selectPlan(this,'daily')">
-          <div class="plan-name">Daily</div>
-          <div class="plan-price">₱80</div>
-          <div class="plan-period">Per day access</div>
-        </div>
-        <div class="plan-card" onclick="selectPlan(this,'monthly')">
-          <div class="plan-name">Monthly</div>
-          <div class="plan-price">₱999</div>
-          <div class="plan-period">30-day validity</div>
-        </div>
-        <div class="plan-card" onclick="selectPlan(this,'quarterly')">
-          <div class="plan-name">Quarterly</div>
-          <div class="plan-price">₱2,499</div>
-          <div class="plan-period">90-day validity</div>
-        </div>
-        <div class="plan-card" onclick="selectPlan(this,'annual')">
-          <div class="plan-name">Annual ⭐</div>
-          <div class="plan-price">₱7,999</div>
-          <div class="plan-period">365-day validity</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:24px;">
-        <button class="btn btn-outline" onclick="regNext(1)">← BACK</button>
-        <button class="btn btn-red" style="flex:1;" onclick="validateStep2()">CONTINUE →</button>
-      </div>
-    </div>
-
-    <!-- STEP 3: Payment -->
-    <div id="reg-step-3" style="display:none;">
-      <div class="panel-title" style="margin-bottom:16px;">Payment Method</div>
-      <div class="payment-opts">
-        <div class="pay-opt" onclick="selectPayment(this,'gcash')">
-          <span class="pay-icon">📱</span>GCash
-        </div>
-        <div class="pay-opt" onclick="selectPayment(this,'cash')">
-          <span class="pay-icon">💵</span>Cash at Gym
-        </div>
-      </div>
-      <div id="pay-upload" style="display:none;margin-top:16px;">
-        <input type="file" id="reg-proof-file" accept=".png,.jpg,.jpeg,.pdf" style="display:none;" onchange="handleProofUpload(this)">
-        <div class="upload-zone" id="reg-upload-zone" onclick="document.getElementById('reg-proof-file').click()">
-          <span class="upload-icon" id="reg-upload-icon">📤</span>
-          <span id="reg-upload-label">Upload Proof of Payment<br>
-          <span style="font-size:11px;">PNG, JPG, PDF up to 10MB</span></span>
-        </div>
-        <img id="reg-proof-preview" style="display:none;max-width:100%;max-height:160px;border-radius:6px;margin-top:10px;">
-      </div>
-      <div id="pay-cash-note" style="display:none;margin-top:16px;padding:14px;
-           background:rgba(245,197,24,0.08);border:1px solid rgba(245,197,24,0.2);
-           border-radius:6px;font-size:13px;color:var(--gold);">
-        💡 Please pay at the front desk. Staff will record your payment.
-      </div>
-      <div style="display:flex;gap:10px;margin-top:24px;">
-        <button class="btn btn-outline" onclick="regNext(2)">← BACK</button>
-        <button class="btn btn-red" style="flex:1;" onclick="completeRegistration()">SUBMIT REGISTRATION</button>
-      </div>
+      <button class="btn-primary" onclick="completeRegistration()">SUBMIT REGISTRATION</button>
     </div>
 
     </div><!-- /register-right -->

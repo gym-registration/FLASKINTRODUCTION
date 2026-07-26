@@ -13,9 +13,6 @@
 ════════════════════════════════════════════════ */
 const LoginPage = (() => {
 
-  let selectedPlan    = null;
-  let selectedPayment = null;
-  let selectedProofFile = null;
   let termsRead        = false;
 
   function init() {
@@ -94,132 +91,8 @@ const LoginPage = (() => {
     showToast('Signed out successfully', 'success');
   }
 
-  // ── Registration flow ──
-  function regNext(step) {
-    for (let i = 1; i <= 3; i++) {
-      const s = document.getElementById('reg-step-' + i);
-      const d = document.getElementById('sdot-' + i);
-      if (s) s.style.display = 'none';
-      if (d) d.classList.remove('active');
-    }
-    const target = document.getElementById('reg-step-' + step);
-    if (target) target.style.display = 'block';
-    for (let i = 1; i <= step; i++) {
-      const dot = document.getElementById('sdot-' + i);
-      if (dot) dot.classList.add('active');
-    }
-  }
-
-  /** STEP 1 → 2: personal information must be complete and valid before continuing */
-  function validateStep1() {
-    const firstName = _val('reg-fname');
-    const lastName  = _val('reg-lname');
-    const email     = _val('reg-email');
-    const phone     = _val('reg-phone');
-    const password  = document.getElementById('reg-pass')?.value    || '';
-    const confirm   = document.getElementById('reg-confirm')?.value || '';
-
-    if (!firstName || !lastName || !email || !password || !confirm) {
-      showToast('Please fill in all required fields.', 'error');
-      return;
-    }
-    if (!/^[A-Za-z\s'-]+$/.test(firstName) || !/^[A-Za-z\s'-]+$/.test(lastName)) {
-      showToast('Names can only contain letters — no numbers.', 'error');
-      return;
-    }
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      showToast('Please enter a valid email address.', 'error');
-      return;
-    }
-    if (!/^09\d{9}$/.test(phone)) {
-      showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
-      return;
-    }
-    if (password.length < 8) {
-      showToast('Password must be at least 8 characters.', 'error');
-      return;
-    }
-    if (password !== confirm) {
-      showToast('Passwords do not match.', 'error');
-      return;
-    }
-    const termsCheck = document.getElementById('reg-terms-check');
-    if (!termsCheck || !termsCheck.checked) {
-      showToast('Please agree to the Terms & Policy first.', 'error');
-      return;
-    }
-
-    regNext(2);
-  }
-
-  /** STEP 2 → 3: a membership plan must be selected before continuing */
-  function validateStep2() {
-    if (!selectedPlan) {
-      showToast('Please select a membership plan first.', 'error');
-      return;
-    }
-    regNext(3);
-  }
-
-  /** Handle proof-of-payment file selection (GCash) */
-  function handleProofUpload(input) {
-    const file = input.files && input.files[0];
-    if (!file) { selectedProofFile = null; return; }
-
-    const maxBytes = 10 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      showToast('File is too large. Maximum size is 10MB.', 'error');
-      input.value = '';
-      selectedProofFile = null;
-      return;
-    }
-
-    selectedProofFile = file;
-
-    const label = document.getElementById('reg-upload-label');
-    const icon  = document.getElementById('reg-upload-icon');
-    if (icon)  icon.textContent = '✅';
-    if (label) label.innerHTML = `Selected: ${file.name}<br><span style="font-size:11px;">Click to change file</span>`;
-
-    const preview = document.getElementById('reg-proof-preview');
-    if (preview && file.type.startsWith('image/')) {
-      preview.src = URL.createObjectURL(file);
-      preview.style.display = 'block';
-    } else if (preview) {
-      preview.style.display = 'none';
-      preview.removeAttribute('src');
-    }
-  }
-
-  function selectPlan(card, plan) {
-    document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
-    card.classList.add('selected');
-    selectedPlan = plan;
-  }
-
-  function selectPayment(opt, method) {
-    document.querySelectorAll('.pay-opt').forEach(o => o.classList.remove('selected'));
-    opt.classList.add('selected');
-    selectedPayment = method;
-    const upload   = document.getElementById('pay-upload');
-    const cashNote = document.getElementById('pay-cash-note');
-    if (upload)   upload.style.display   = method === 'gcash' ? 'block' : 'none';
-    if (cashNote) cashNote.style.display = method === 'cash'  ? 'block' : 'none';
-
-    // Switching methods resets any previously selected proof file
-    if (method !== 'gcash') {
-      selectedProofFile = null;
-      const fileInput = document.getElementById('reg-proof-file');
-      if (fileInput) fileInput.value = '';
-      const preview = document.getElementById('reg-proof-preview');
-      if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
-      const label = document.getElementById('reg-upload-label');
-      const icon  = document.getElementById('reg-upload-icon');
-      if (icon)  icon.textContent = '📤';
-      if (label) label.innerHTML = 'Upload Proof of Payment<br><span style="font-size:11px;">PNG, JPG, PDF up to 10MB</span>';
-    }
-  }
-
+  // ── Registration flow (single step: personal info only) ──
+  /** Membership plan & payment are now chosen later, from the member dashboard. */
   function completeRegistration() {
     const firstName = _val('reg-fname');
     const middleInitial = _val('reg-mi');
@@ -234,58 +107,35 @@ const LoginPage = (() => {
     // ── Client-side validation ──
     if (!firstName || !lastName || !email || !password) {
       showToast('Please fill in all required fields.', 'error');
-      regNext(1);
       return;
     }
     if (!/^[A-Za-z\s'-]+$/.test(firstName) || !/^[A-Za-z\s'-]+$/.test(lastName)) {
       showToast('Names can only contain letters — no numbers.', 'error');
-      regNext(1);
       return;
     }
     if (middleInitial && !/^[A-Za-z]+$/.test(middleInitial)) {
       showToast('Middle initial can only contain letters.', 'error');
-      regNext(1);
       return;
     }
     if (extensionName && !/^[A-Za-z.\s]+$/.test(extensionName)) {
       showToast('Extension name can only contain letters.', 'error');
-      regNext(1);
       return;
     }
     if (!/^09\d{9}$/.test(phone)) {
       showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
-      regNext(1);
       return;
     }
     if (password.length < 8) {
       showToast('Password must be at least 8 characters.', 'error');
-      regNext(1);
       return;
     }
     if (password !== confirm) {
       showToast('Passwords do not match.', 'error');
-      regNext(1);
       return;
     }
     const termsCheck = document.getElementById('reg-terms-check');
     if (!termsCheck || !termsCheck.checked) {
       showToast('Please agree to the Terms & Policy.', 'error');
-      regNext(1);
-      return;
-    }
-    if (!selectedPlan) {
-      showToast('Please select a membership plan.', 'error');
-      regNext(2);
-      return;
-    }
-    if (!selectedPayment) {
-      showToast('Please select a payment method.', 'error');
-      regNext(3);
-      return;
-    }
-    if (selectedPayment === 'gcash' && !selectedProofFile) {
-      showToast('Please upload your proof of payment.', 'error');
-      regNext(3);
       return;
     }
 
@@ -298,11 +148,8 @@ const LoginPage = (() => {
     formData.append('phone',      phone);
     formData.append('birthday',   birthday);
     formData.append('password',   password);
-    formData.append('plan',       selectedPlan);
-    formData.append('payment_method', selectedPayment);
-    if (selectedProofFile) formData.append('proof', selectedProofFile);
 
-    const submitBtn = document.querySelector('#reg-step-3 .btn-red');
+    const submitBtn = document.querySelector('#reg-step-1 .btn-primary');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'SUBMITTING...'; }
 
     fetch('/register', {
@@ -316,7 +163,7 @@ const LoginPage = (() => {
           if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'SUBMIT REGISTRATION'; }
           return;
         }
-        showToast(data.message || 'Registration submitted! Awaiting verification.', 'success');
+        showToast(data.message || 'Account created! Sign in and pick a plan from your dashboard.', 'success');
         setTimeout(() => {
           Navigation.goToScreen('login');
           if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'SUBMIT REGISTRATION'; }
@@ -328,7 +175,7 @@ const LoginPage = (() => {
       });
   }
 
-  return { init, detectRoleHint, handleLogin, doLogout, regNext, validateStep1, validateStep2, selectPlan, selectPayment, handleProofUpload, completeRegistration, openTermsModal };
+  return { init, detectRoleHint, handleLogin, doLogout, completeRegistration, openTermsModal };
 })();
 
 
@@ -343,12 +190,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Expose login-page functions to inline onclick handlers
   window.detectRoleHint       = LoginPage.detectRoleHint;
   window.handleLogin          = LoginPage.handleLogin;
-  window.regNext              = LoginPage.regNext;
-  window.validateStep1        = LoginPage.validateStep1;
-  window.validateStep2        = LoginPage.validateStep2;
   window.openTermsModal       = LoginPage.openTermsModal;
-  window.selectPlan           = LoginPage.selectPlan;
-  window.selectPayment        = LoginPage.selectPayment;
-  window.handleProofUpload    = LoginPage.handleProofUpload;
   window.completeRegistration = LoginPage.completeRegistration;
 });

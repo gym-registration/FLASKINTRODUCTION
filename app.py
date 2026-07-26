@@ -320,8 +320,6 @@ def register():
     phone      = (data.get('phone')      or '').strip()
     birthday   = (data.get('birthday')   or '').strip()
     password   = data.get('password')    or ''
-    plan_key   = (data.get('plan')       or '').strip().lower()
-    pay_method = (data.get('payment_method') or '').strip().lower()
 
     # ── Validation ──
     if not first_name or not last_name or not email or not password:
@@ -345,27 +343,6 @@ def register():
     if User.query.filter_by(email=email).first() is not None:
         return jsonify(success=False, error='An account with this email already exists.'), 409
 
-    # ── Proof of payment (required for GCash, not for cash) ──
-    proof_file = request.files.get('proof')
-    proof_relative_path = None
-    if pay_method == 'gcash':
-        if not proof_file or not proof_file.filename:
-            return jsonify(success=False, error='Please upload your proof of payment.'), 400
-
-        ext = proof_file.filename.rsplit('.', 1)[-1].lower() if '.' in proof_file.filename else ''
-        if ext not in PROOF_ALLOWED_EXT:
-            return jsonify(success=False, error='Proof of payment must be a PNG, JPG, or PDF file.'), 400
-
-        proof_file.seek(0, os.SEEK_END)
-        size = proof_file.tell()
-        proof_file.seek(0)
-        if size > PROOF_MAX_BYTES:
-            return jsonify(success=False, error='Proof of payment file is too large (max 10MB).'), 400
-
-        safe_name = secure_filename(f"{secrets.token_hex(8)}_{proof_file.filename}")
-        proof_file.save(os.path.join(PROOF_UPLOAD_FOLDER, safe_name))
-        proof_relative_path = f"uploads/payment_proofs/{safe_name}"
-
     birthday_date = None
     if birthday:
         try:
@@ -387,44 +364,9 @@ def register():
         status='pending',
     )
     db.session.add(new_user)
-    db.session.flush()  # get new_user.id before commit
-
-    # ── Attach the selected membership plan, if valid ──
-    plan_name_map = {
-        'daily': 'Daily',
-        'monthly': 'Monthly',
-        'quarterly': 'Quarterly',
-        'annual': 'Annual',
-    }
-    plan = None
-    if plan_key in plan_name_map:
-        plan = MembershipPlan.query.filter_by(name=plan_name_map[plan_key]).first()
-
-    if plan is not None:
-        start = date.today()
-        expiry = start + timedelta(days=plan.duration_days)
-        new_membership = Membership(
-            member_id=new_user.id,
-            plan_id=plan.id,
-            start_date=start,
-            expiry_date=expiry,
-            status='pending',
-        )
-        db.session.add(new_membership)
-
-        new_payment = Payment(
-            member_id=new_user.id,
-            plan_id=plan.id,
-            amount=plan.price,
-            method=pay_method or 'unspecified',
-            proof_image_path=proof_relative_path,
-            status='pending',
-        )
-        db.session.add(new_payment)
-
     db.session.commit()
 
-    return jsonify(success=True, message='Registration submitted! Awaiting verification.')
+    return jsonify(success=True, message='Account created! Sign in and pick a plan from your dashboard.')
 
 
 def _generate_temp_password(length=10):

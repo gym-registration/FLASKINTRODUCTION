@@ -94,7 +94,7 @@
               <div class="progress-bar"><div class="progress-fill" data-width="{% if goal and goal.current_weight and goal.goal_weight and goal.current_weight > 0 %}{{ (100 - ((goal.current_weight - goal.goal_weight)|abs / goal.current_weight * 100))|round|int }}{% else %}0{% endif %}"></div></div>
             </div>
             <div class="goal-item">
-              <div class="goal-header"><span>Membership Used</span><span class="goal-val {% if plan.days_left > 3 %}green{% else %}red{% endif %}" style="font-weight:700;">{% if plan %}{{ plan.days_used }}/{{ plan.days_total }} days{% else %}—{% endif %}</span></div>
+              <div class="goal-header"><span>Membership Used</span><span class="goal-val {% if plan and plan.days_left > 3 %}green{% elif plan %}red{% endif %}" style="font-weight:700;">{% if plan %}{{ plan.days_used }}/{{ plan.days_total }} days{% else %}—{% endif %}</span></div>
               <div class="progress-bar"><div class="progress-fill" data-width="{{ plan.percent_used if plan else 0 }}"></div></div>
             </div>
           </div>
@@ -132,11 +132,14 @@
           </div>
         </div>
 
-        <!-- Upgrade / Renew -->
+        <!-- Choose / Upgrade / Renew -->
         <div class="panel">
-          <div class="panel-header"><div class="panel-title">Upgrade / Renew</div></div>
+          <div class="panel-header"><div class="panel-title">{% if plan %}Upgrade / Renew{% else %}Choose a Plan{% endif %}</div></div>
           <div class="panel-body">
             <div class="plan-grid">
+              <div class="plan-card" onclick="selectPlan(this,'daily')">
+                <div class="plan-name">Daily</div><div class="plan-price">₱80</div>
+              </div>
               <div class="plan-card" onclick="selectPlan(this,'monthly')">
                 <div class="plan-name">Monthly</div><div class="plan-price">₱999</div>
               </div>
@@ -169,7 +172,7 @@
               </div>
               <img id="member-renew-preview" class="proof-preview" alt="Payment proof preview" style="display:none;">
               <button class="btn btn-red" style="margin-top:16px;width:100%;" onclick="submitRenewalPayment()">
-                SUBMIT RENEWAL PAYMENT
+                {% if plan %}SUBMIT RENEWAL PAYMENT{% else %}SUBMIT PAYMENT{% endif %}
               </button>
             </div>
           </div>
