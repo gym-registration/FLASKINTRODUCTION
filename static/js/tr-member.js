@@ -15,7 +15,6 @@
 const MemberModule = (() => {
 
   let selectedPlan    = null;
-  let renewalTxnCnt   = 9000;
 
   function init() {
     const session = Session.guardDashboard();
@@ -68,41 +67,52 @@ const MemberModule = (() => {
     preview.style.display = 'block';
   }
 
-  /** Submit renewal payment and push to admin queue */
+  /** Submit plan payment (new plan or renewal) to the backend for admin verification */
   function submitRenewalPayment() {
     const methodEl = document.getElementById('member-renew-method');
     const refEl    = document.getElementById('member-renew-ref');
     const proofEl  = document.getElementById('member-renew-proof');
     const file     = proofEl && proofEl.files && proofEl.files[0];
 
-    if (!selectedPlan)           { showToast('Please select a plan first', 'error'); return; }
-    if (!methodEl?.value || !refEl?.value.trim() || !file) {
-      showToast('Complete method, reference number, and screenshot proof', 'error');
+    if (!selectedPlan) { showToast('Please select a plan first', 'error'); return; }
+    if (!methodEl?.value) { showToast('Please choose a payment method', 'error'); return; }
+    if (methodEl.value === 'GCash' && (!refEl?.value.trim() || !file)) {
+      showToast('GCash payments need a reference number and screenshot proof', 'error');
       return;
     }
 
-    renewalTxnCnt++;
-    // Persist pending payment in localStorage so admin page can pick it up
-    try {
-      const pending = JSON.parse(localStorage.getItem('trmem_pending_payments') || '[]');
-      const session = Auth.getSession();
-      pending.push({
-        name:     session ? session.name : 'Member',
-        method:   methodEl.value,
-        ref:      refEl.value.trim(),
-        txn:      '#TXN-' + renewalTxnCnt,
-        plan:     selectedPlan,
-        ts:       new Date().toISOString()
-      });
-      localStorage.setItem('trmem_pending_payments', JSON.stringify(pending));
-    } catch (e) { /* ignore */ }
+    const formData = new FormData();
+    formData.append('plan',      selectedPlan);
+    formData.append('method',    methodEl.value);
+    formData.append('reference', refEl?.value.trim() || '');
+    if (file) formData.append('proof', file);
 
-    methodEl.value = '';
-    refEl.value    = '';
-    proofEl.value  = '';
-    const preview = document.getElementById('member-renew-preview');
-    if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
-    showToast('Payment proof submitted! Awaiting admin verification.', 'success');
+    const btn = document.querySelector('#member-membership .btn-red');
+    const originalLabel = btn ? btn.textContent : 'SUBMIT PAYMENT';
+    if (btn) { btn.disabled = true; btn.textContent = 'SUBMITTING...'; }
+
+    fetch('/member/submit-payment', { method: 'POST', body: formData })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        if (!ok || !data.success) {
+          showToast(data.error || 'Could not submit payment.', 'error');
+          return;
+        }
+
+        methodEl.value = '';
+        if (refEl) refEl.value = '';
+        if (proofEl) proofEl.value = '';
+        const preview = document.getElementById('member-renew-preview');
+        if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+
+        showToast(data.message || 'Payment submitted! Awaiting admin verification.', 'success');
+        setTimeout(() => window.location.reload(), 1200);
+      })
+      .catch(() => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        showToast('Could not reach the server. Please try again.', 'error');
+      });
   }
 
   /** Expose plan selection for the renewal grid */

@@ -653,6 +653,93 @@ def _find_member(identifier):
     return None, 'No member found with that name.'
 
 
+@app.route('/member/submit-payment', methods=['POST'])
+def member_submit_payment():
+    if session.get('role') != 'member':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    user = User.query.get(session.get('user_id'))
+    if user is None:
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    data = request.form
+    plan_key  = (data.get('plan')      or '').strip().lower()
+    method    = (data.get('method')    or '').strip()
+    reference = (data.get('reference') or '').strip()
+
+    plan_name_map = {
+        'daily': 'Daily',
+        'monthly': 'Monthly',
+        'quarterly': 'Quarterly',
+        'annual': 'Annual',
+    }
+    if plan_key not in plan_name_map:
+        return jsonify(success=False, error='Please select a membership plan.'), 400
+
+    plan = MembershipPlan.query.filter_by(name=plan_name_map[plan_key]).first()
+    if plan is None:
+        return jsonify(success=False, error='Selected plan is not available.'), 400
+
+    if not method:
+        return jsonify(success=False, error='Please select a payment method.'), 400
+
+    # ── Proof of payment (required for GCash, optional for Cash) ──
+    proof_file = request.files.get('proof')
+    proof_relative_path = None
+    if method.lower() == 'gcash':
+        if not proof_file or not proof_file.filename:
+            return jsonify(success=False, error='Please upload your proof of payment.'), 400
+
+        ext = proof_file.filename.rsplit('.', 1)[-1].lower() if '.' in proof_file.filename else ''
+        if ext not in PROOF_ALLOWED_EXT:
+            return jsonify(success=False, error='Proof of payment must be a PNG, JPG, or PDF file.'), 400
+
+        proof_file.seek(0, os.SEEK_END)
+        size = proof_file.tell()
+        proof_file.seek(0)
+        if size > PROOF_MAX_BYTES:
+            return jsonify(success=False, error='Proof of payment file is too large (max 10MB).'), 400
+
+        safe_name = secure_filename(f"{secrets.token_hex(8)}_{proof_file.filename}")
+        proof_file.save(os.path.join(PROOF_UPLOAD_FOLDER, safe_name))
+        proof_relative_path = f"uploads/payment_proofs/{safe_name}"
+
+    # ── Record the payment as pending — an admin/staff must verify it ──
+    new_payment = Payment(
+        member_id=user.id,
+        plan_id=plan.id,
+        amount=plan.price,
+        method=method,
+        reference_number=reference or None,
+        proof_image_path=proof_relative_path,
+        status='pending',
+    )
+    db.session.add(new_payment)
+
+    # ── Reflect the pending selection on the membership record so admin/staff
+    #    can see what's awaiting verification. Don't touch an already-active
+    #    membership — that stays active until the renewal is approved.
+    today = date.today()
+    membership = Membership.query.filter_by(member_id=user.id).first()
+    if membership is None:
+        membership = Membership(
+            member_id=user.id,
+            plan_id=plan.id,
+            start_date=today,
+            expiry_date=today + timedelta(days=plan.duration_days),
+            status='pending',
+        )
+        db.session.add(membership)
+    elif membership.status != 'active':
+        membership.plan_id     = plan.id
+        membership.expiry_date = today + timedelta(days=plan.duration_days)
+        membership.status      = 'pending'
+
+    db.session.commit()
+
+    return jsonify(success=True, message='Payment submitted! Awaiting admin verification.')
+
+
 @app.route('/staff/record-payment', methods=['POST'])
 def staff_record_payment():
     if session.get('role') not in ('staff', 'admin'):
