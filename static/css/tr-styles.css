@@ -193,8 +193,8 @@ body::before {
 /* Register screen */
 #screen-register {
   align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
+  justify-content: flex-start;
+  padding: 14px 20px;
   background: var(--black);
 }
 
@@ -208,47 +208,71 @@ body::before {
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, filter 0.2s;
 }
 .register-box:hover {
-  /* ── Landscape register layout ── */
+  filter: brightness(1.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Landscape register layout ── */
 .register-box-landscape {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
-  gap: 48px;
+  align-items: stretch;
+  gap: 32px;
   width: 92%;
-  max-width: 980px;
-  max-height: 92vh;
-  padding: 40px 48px;
+  max-width: 960px;
+  min-height: 620px;
+  max-height: 96vh;
+  padding: 22px 36px;
   position: relative;
   overflow: hidden;
 }
 
-.register-box-landscape .back-btn { margin-bottom: 20px; }
+.register-box-landscape .back-btn { margin-bottom: 10px; }
 
 .register-left {
-  flex: 0 0 260px;
+  flex: 0 0 200px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
-  padding-top: 8px;
+  padding-top: 2px;
 }
-.register-left .login-logo { margin-bottom: 16px; }
-.register-left .login-role-tag { margin-bottom: 6px; }
-.register-left .login-title { font-size: 30px; margin-bottom: 24px; }
-.register-left .step-indicator { flex-direction: column; width: 100%; gap: 10px; margin-top: 12px; }
+.register-left .login-logo { margin-bottom: 12px; }
+.register-left .login-logo .logo-badge img { width: 170px; }
+.register-left .login-role-tag { margin-bottom: 4px; }
+.register-left .login-title { font-size: 24px; margin-bottom: 12px; }
+.register-left .step-indicator { flex-direction: column; width: 100%; gap: 8px; margin-top: 8px; margin-bottom: 0; }
 .register-left .step-dot { height: 4px; width: 100%; }
 
 .register-right {
   flex: 1;
   min-width: 0;
-  max-height: 92vh;
-  overflow-y: auto;      /* only this panel scrolls, only if content truly can't fit */
+  max-height: 96vh;
+  overflow-y: auto;      /* safety fallback only — spacing below is tightened so this shouldn't normally trigger */
   padding-right: 6px;
 }
-  filter: brightness(1.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.35);
-}
+
+/* ── Tightened spacing so the login & register forms fit on screen without scrolling ── */
+#screen-login .login-box { padding: 32px 34px; }
+#screen-login .login-header { margin-bottom: 22px; }
+#screen-login .form-group,
+#screen-register .form-group { margin-bottom: 11px; }
+#screen-login .form-input,
+#screen-register .form-input { padding: 9px 12px; font-size: 14px; }
+#screen-register .form-row,
+#screen-register .form-row-4 { gap: 10px; }
+#screen-register .form-row-4 { grid-template-columns: 2fr 0.8fr 2fr 1.1fr; }
+#screen-register .form-row-4 .form-label { white-space: nowrap; }
+#screen-register .panel-title { margin-bottom: 10px !important; }
+#screen-register .plan-grid,
+#screen-register .payment-opts { gap: 10px; margin-top: 4px; }
+#screen-register .plan-card,
+#screen-register .pay-opt { padding: 12px; }
+#screen-register .btn-primary,
+#screen-register .btn { padding: 11px; margin-top: 2px; }
+#screen-register .form-label { margin-bottom: 5px; }
 
 .back-btn {
   background: none;
@@ -259,7 +283,7 @@ body::before {
   font-size: 13px;
   letter-spacing: 1px;
   padding: 0;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -269,7 +293,7 @@ body::before {
 .back-btn:hover { color: var(--white); }
 
 /* Step indicator */
-.step-indicator { display: flex; gap: 8px; margin-bottom: 36px; }
+.step-indicator { display: flex; gap: 8px; margin-bottom: 20px; }
 .step-dot { height: 3px; flex: 1; background: var(--border); border-radius: 2px; transition: background 0.3s; }
 .step-dot.active { background: var(--red); }
 
@@ -964,6 +988,18 @@ body.role-member .sidebar-role           { color: var(--green); }
   .form-row-4       { grid-template-columns: 1fr 1fr; }
   .stats-grid       { grid-template-columns: 1fr 1fr; }
   .login-box, .register-box { padding: 32px 20px; }
+  .register-box-landscape {
+    flex-direction: column;
+    width: 100%;
+    max-width: 520px;
+    min-height: 0;
+    max-height: none;
+    padding: 32px 20px;
+  }
+  .register-left { flex: none; padding-top: 0; }
+  .register-left .step-indicator { flex-direction: row; }
+  .register-left .step-dot { height: 3px; }
+  .register-right { max-height: none; overflow-y: visible; padding-right: 0; }
 }
 /* ═══════════════════════════════════════════════════════════════
    POWER GYM — Public Home Page

@@ -76,26 +76,29 @@
      SCREEN: REGISTER (Member self-registration)
 ═══════════════════════════════════════ -->
 <div id="screen-register" class="screen">
-  <div class="register-box">
+  <div class="register-box register-box-landscape">
+
+    <div class="register-left">
+      <div class="login-logo">
+        <div class="logo-badge">
+          <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
+        </div>
+      </div>
+
+      <div class="login-role-tag">NEW MEMBER REGISTRATION</div>
+      <div class="login-title">JOIN POWER GYM</div>
+
+      <!-- Step progress indicator -->
+      <div class="step-indicator">
+        <div class="step-dot active" id="sdot-1"></div>
+        <div class="step-dot"        id="sdot-2"></div>
+        <div class="step-dot"        id="sdot-3"></div>
+      </div>
+    </div><!-- /register-left -->
+
+    <div class="register-right">
 
     <button class="back-btn" onclick="goTo('login')">← BACK TO LOGIN</button>
-
-    <div class="login-logo" style="margin-bottom:20px;">
-      <div class="logo-badge">
-        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Power Gym">
-      </div>
-    </div>
-
-    <div class="login-role-tag">NEW MEMBER REGISTRATION</div>
-    <div class="login-title" style="margin-bottom:28px;">JOIN POWER GYM</div>
-
-    <!-- Step progress indicator -->
-    <div class="step-indicator">
-      <div class="step-dot active" id="sdot-1"></div>
-      <div class="step-dot"        id="sdot-2"></div>
-      <div class="step-dot"        id="sdot-3"></div>
-      <div class="step-dot"        id="sdot-4"></div>
-    </div>
 
     <!-- STEP 1: Personal Info -->
     <div id="reg-step-1">
@@ -107,7 +110,7 @@
                  oninput="this.value=this.value.replace(/[^A-Za-z\s'-]/g,'')">
         </div>
         <div class="form-group">
-          <label class="form-label">Middle Initial</label>
+          <label class="form-label">M.I.</label>
           <input class="form-input" id="reg-mi" placeholder="D" maxlength="5"
                  oninput="this.value=this.value.replace(/[^A-Za-z]/g,'')">
         </div>
@@ -117,8 +120,8 @@
                  oninput="this.value=this.value.replace(/[^A-Za-z\s'-]/g,'')">
         </div>
         <div class="form-group">
-          <label class="form-label">Extension Name</label>
-          <input class="form-input" id="reg-ext" placeholder="Jr., Sr., III (optional)" maxlength="10"
+          <label class="form-label">Suffix</label>
+          <input class="form-input" id="reg-ext" placeholder="Jr., Sr., III" maxlength="10"
                  oninput="this.value=this.value.replace(/[^A-Za-z.\s]/g,'')">
         </div>
       </div>
@@ -132,8 +135,8 @@
           <input class="form-input" id="reg-phone" placeholder="09171234567"
                  maxlength="11" inputmode="numeric" pattern="09\d{9}"
                  oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)">
-          <div style="font-size:11px;color:var(--muted);margin-top:6px;">
-            Philippine mobile number — 11 digits, starting with 09 (e.g. 09171234567)
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+            Must start with 09 and be 11 digits.
           </div>
         </div>
         <div class="form-group">
@@ -159,6 +162,15 @@
             <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.86 21.86 0 0 1 5.06-6.06M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.86 21.86 0 0 1-3.22 4.56M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
           </button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--white);cursor:pointer;">
+          <input type="checkbox" id="reg-terms-check" style="margin-top:3px;" disabled>
+          <span>I have read and agree to the <span class="link-btn" onclick="event.preventDefault();openTermsModal()">Terms &amp; Policy</span>.</span>
+        </label>
+        <div id="reg-terms-hint" style="font-size:11px;color:var(--muted);margin-top:4px;margin-left:24px;">
+          Please open and read the Terms &amp; Policy before agreeing.
         </div>
       </div>
       <button class="btn-primary" onclick="validateStep1()">CONTINUE →</button>
@@ -195,38 +207,8 @@
       </div>
     </div>
 
-    <!-- STEP 3: Terms & Policy -->
+    <!-- STEP 3: Payment -->
     <div id="reg-step-3" style="display:none;">
-      <div class="panel-title" style="margin-bottom:16px;">Terms &amp; Policy</div>
-      <div class="panel" style="margin-bottom:16px;">
-        <div class="panel-body" style="font-size:13px;color:var(--muted);line-height:1.7;max-height:190px;overflow:auto;">
-          <p><strong>FITNESS AREA RULES:</strong></p>
-          <p>• Use facilities and equipment at your own risk.</p>
-          <p>• Use equipment properly and follow directions carefully.</p>
-          <p>• Do not lean on the equipment. Keep hands away from moving parts.</p>
-          <p>• Consult a physician before beginning an exercise program.</p>
-          <p>• No food or drinks (except water). No smoking.</p>
-          <p>• Children under 18 must be accompanied by an adult.</p>
-          <p>• Proper fitness attire is required. No boots, street shoes, sandals or bare feet.</p>
-          <p>• Report any damaged equipment to management immediately. DO NOT USE.</p>
-          <p>• Always be courteous and respectful of others.</p>
-          <p>• Please return all equipment to its place and wipe down machines after use.</p>
-        </div>
-      </div>
-      <div class="form-group" style="margin-bottom:0;">
-        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--white);cursor:pointer;">
-          <input type="checkbox" id="reg-terms-check" style="margin-top:3px;">
-          <span>I have read and agree to the Terms &amp; Policy.</span>
-        </label>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:24px;">
-        <button class="btn btn-outline" onclick="regNext(2)">← BACK</button>
-        <button class="btn btn-red" style="flex:1;" onclick="proceedToPayment()">CONTINUE TO PAYMENT →</button>
-      </div>
-    </div>
-
-    <!-- STEP 4: Payment -->
-    <div id="reg-step-4" style="display:none;">
       <div class="panel-title" style="margin-bottom:16px;">Payment Method</div>
       <div class="payment-opts">
         <div class="pay-opt" onclick="selectPayment(this,'gcash')">
@@ -251,13 +233,36 @@
         💡 Please pay at the front desk. Staff will record your payment.
       </div>
       <div style="display:flex;gap:10px;margin-top:24px;">
-        <button class="btn btn-outline" onclick="regNext(3)">← BACK</button>
+        <button class="btn btn-outline" onclick="regNext(2)">← BACK</button>
         <button class="btn btn-red" style="flex:1;" onclick="completeRegistration()">SUBMIT REGISTRATION</button>
       </div>
     </div>
 
+    </div><!-- /register-right -->
+
   </div>
 </div><!-- /screen-register -->
+
+<!-- Terms & Policy popup (opened from the Personal Information step) -->
+<div class="modal-overlay" id="terms-modal">
+  <div class="modal" style="max-width:520px;">
+    <button class="modal-close" onclick="closeModal('terms-modal')">✕</button>
+    <div class="modal-title">TERMS &amp; POLICY</div>
+    <div id="terms-modal-body" style="font-size:13px;color:var(--muted);line-height:1.7;max-height:60vh;overflow:auto;">
+      <p><strong>FITNESS AREA RULES:</strong></p>
+      <p>• Use facilities and equipment at your own risk.</p>
+      <p>• Use equipment properly and follow directions carefully.</p>
+      <p>• Do not lean on the equipment. Keep hands away from moving parts.</p>
+      <p>• Consult a physician before beginning an exercise program.</p>
+      <p>• No food or drinks (except water). No smoking.</p>
+      <p>• Children under 18 must be accompanied by an adult.</p>
+      <p>• Proper fitness attire is required. No boots, street shoes, sandals or bare feet.</p>
+      <p>• Report any damaged equipment to management immediately. DO NOT USE.</p>
+      <p>• Always be courteous and respectful of others.</p>
+      <p>• Please return all equipment to its place and wipe down machines after use.</p>
+    </div>
+  </div>
+</div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>

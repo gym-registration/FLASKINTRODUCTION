@@ -16,6 +16,7 @@ const LoginPage = (() => {
   let selectedPlan    = null;
   let selectedPayment = null;
   let selectedProofFile = null;
+  let termsRead        = false;
 
   function init() {
     // Always show the login/register page first when opening the root URL.
@@ -25,6 +26,35 @@ const LoginPage = (() => {
 
     // Modal backdrop binding
     _bindModalBackdrops();
+
+    // Track whether the user has scrolled through the Terms & Policy content
+    const termsBody = document.getElementById('terms-modal-body');
+    if (termsBody) termsBody.addEventListener('scroll', _onTermsScroll);
+  }
+
+  /** Open the Terms & Policy modal; if the content already fits without scrolling
+   *  (nothing left to read), unlock the agreement checkbox immediately. */
+  function openTermsModal() {
+    openModal('terms-modal');
+    const body = document.getElementById('terms-modal-body');
+    if (!body) return;
+    requestAnimationFrame(() => {
+      if (body.scrollHeight <= body.clientHeight + 4) _markTermsRead();
+    });
+  }
+
+  function _onTermsScroll(e) {
+    const body = e.target;
+    if (body.scrollTop + body.clientHeight >= body.scrollHeight - 8) _markTermsRead();
+  }
+
+  function _markTermsRead() {
+    if (termsRead) return;
+    termsRead = true;
+    const check = document.getElementById('reg-terms-check');
+    const hint  = document.getElementById('reg-terms-hint');
+    if (check) check.disabled = false;
+    if (hint)  hint.style.display = 'none';
   }
 
   function detectRoleHint() {
@@ -66,7 +96,7 @@ const LoginPage = (() => {
 
   // ── Registration flow ──
   function regNext(step) {
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 3; i++) {
       const s = document.getElementById('reg-step-' + i);
       const d = document.getElementById('sdot-' + i);
       if (s) s.style.display = 'none';
@@ -113,6 +143,11 @@ const LoginPage = (() => {
       showToast('Passwords do not match.', 'error');
       return;
     }
+    const termsCheck = document.getElementById('reg-terms-check');
+    if (!termsCheck || !termsCheck.checked) {
+      showToast('Please agree to the Terms & Policy first.', 'error');
+      return;
+    }
 
     regNext(2);
   }
@@ -124,12 +159,6 @@ const LoginPage = (() => {
       return;
     }
     regNext(3);
-  }
-
-  function proceedToPayment() {
-    const check = document.getElementById('reg-terms-check');
-    if (!check || !check.checked) { showToast('Please agree to the Terms & Policy first', 'error'); return; }
-    regNext(4);
   }
 
   /** Handle proof-of-payment file selection (GCash) */
@@ -238,6 +267,12 @@ const LoginPage = (() => {
       regNext(1);
       return;
     }
+    const termsCheck = document.getElementById('reg-terms-check');
+    if (!termsCheck || !termsCheck.checked) {
+      showToast('Please agree to the Terms & Policy.', 'error');
+      regNext(1);
+      return;
+    }
     if (!selectedPlan) {
       showToast('Please select a membership plan.', 'error');
       regNext(2);
@@ -245,12 +280,12 @@ const LoginPage = (() => {
     }
     if (!selectedPayment) {
       showToast('Please select a payment method.', 'error');
-      regNext(4);
+      regNext(3);
       return;
     }
     if (selectedPayment === 'gcash' && !selectedProofFile) {
       showToast('Please upload your proof of payment.', 'error');
-      regNext(4);
+      regNext(3);
       return;
     }
 
@@ -267,7 +302,7 @@ const LoginPage = (() => {
     formData.append('payment_method', selectedPayment);
     if (selectedProofFile) formData.append('proof', selectedProofFile);
 
-    const submitBtn = document.querySelector('#reg-step-4 .btn-red');
+    const submitBtn = document.querySelector('#reg-step-3 .btn-red');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'SUBMITTING...'; }
 
     fetch('/register', {
@@ -293,7 +328,7 @@ const LoginPage = (() => {
       });
   }
 
-  return { init, detectRoleHint, handleLogin, doLogout, regNext, validateStep1, validateStep2, proceedToPayment, selectPlan, selectPayment, handleProofUpload, completeRegistration };
+  return { init, detectRoleHint, handleLogin, doLogout, regNext, validateStep1, validateStep2, selectPlan, selectPayment, handleProofUpload, completeRegistration, openTermsModal };
 })();
 
 
@@ -311,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.regNext              = LoginPage.regNext;
   window.validateStep1        = LoginPage.validateStep1;
   window.validateStep2        = LoginPage.validateStep2;
-  window.proceedToPayment     = LoginPage.proceedToPayment;
+  window.openTermsModal       = LoginPage.openTermsModal;
   window.selectPlan           = LoginPage.selectPlan;
   window.selectPayment        = LoginPage.selectPayment;
   window.handleProofUpload    = LoginPage.handleProofUpload;
