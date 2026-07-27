@@ -956,10 +956,16 @@ def member():
         .first()
     )
 
+    # Members without a paid, active membership only get Overview + My
+    # Membership — everything else (attendance history, goals, services) is
+    # locked behind an active plan.
+    plan_active = bool(current_plan and current_plan['status'] == 'Active')
+
     return render_template(
         'member-dashboard.html',
         member=user,
         plan=current_plan,
+        plan_active=plan_active,
         present_days=present_days,
         days_in_month=days_in_month,
         month_label=today.strftime('%B %Y'),

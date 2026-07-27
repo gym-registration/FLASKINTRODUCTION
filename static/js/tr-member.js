@@ -15,6 +15,12 @@
 const MemberModule = (() => {
 
   let selectedPlan    = null;
+  const LOCKED_TABS   = ['attendance', 'goals', 'services'];
+
+  function _planActive() {
+    const root = document.getElementById('member-dashboard-root');
+    return root ? root.dataset.planActive === 'true' : true;
+  }
 
   function init() {
     const session = Session.guardDashboard();
@@ -31,6 +37,9 @@ const MemberModule = (() => {
     buildAttGrid('att-grid-member', memberData.present_days || [], memberData.days_in_month || 30);
     _hydrateProgressBars();
     _bindModalBackdrops();
+
+    // Members without an active plan land on Overview (which points them to
+    // My Membership); everything else stays locked until they pay.
     Navigation.activateTab('member', 'overview', document.getElementById('nav-member-overview'));
   }
 
@@ -54,6 +63,11 @@ const MemberModule = (() => {
   }
 
   function tab(tabName, navEl) {
+    if (LOCKED_TABS.includes(tabName) && !_planActive()) {
+      showToast('Activate your membership first to unlock this.', 'error');
+      Navigation.activateTab('member', 'membership', document.getElementById('nav-member-membership'));
+      return;
+    }
     Navigation.activateTab('member', tabName, navEl);
   }
 

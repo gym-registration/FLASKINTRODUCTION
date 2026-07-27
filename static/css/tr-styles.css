@@ -428,6 +428,20 @@ body::before {
 .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--white); }
 .nav-item.active { background: rgba(230,30,37,0.14); color: var(--white); border-left-color: var(--red); }
 .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+.nav-item.locked { opacity: 0.5; }
+.nav-item.locked:hover { background: transparent; color: var(--muted); }
+.nav-lock { margin-left: auto; font-size: 11px; }
+
+/* Membership gate banner (shown to members without an active plan) */
+.gate-banner {
+  display: flex; align-items: center; gap: 16px;
+  background: rgba(255,171,64,0.08); border: 1px solid rgba(255,171,64,0.3);
+  border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;
+}
+.gate-banner-icon { font-size: 22px; flex-shrink: 0; }
+.gate-banner-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; letter-spacing: .5px; color: var(--gold); font-size: 15px; margin-bottom: 4px; }
+.gate-banner-text { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.gate-banner .btn { flex-shrink: 0; margin-left: auto; }
 
 .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
 .user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -1160,19 +1174,29 @@ body.home-page { overflow-x: hidden; }
 .plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .plan-tier {
   position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-  padding: 30px 24px; transition: filter .2s, border-color .2s, box-shadow .2s, transform .2s;
+  overflow: hidden; transition: filter .2s, border-color .2s, box-shadow .2s, transform .2s;
 }
 .plan-tier:hover { filter: brightness(1.08); transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,0.4); }
 .plan-tier.featured { border-color: var(--red); box-shadow: 0 0 0 1px var(--red), 0 12px 32px rgba(230,30,37,0.18); }
 .plan-popular-tag {
-  position: absolute; top: -1px; right: 22px;
+  position: absolute; top: 14px; right: 14px; z-index: 2;
   background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
-  letter-spacing: 1.5px; padding: 5px 10px; border-radius: 0 0 5px 5px;
+  letter-spacing: 1.5px; padding: 5px 10px; border-radius: 20px;
 }
+.plan-photo {
+  aspect-ratio: 16/10; background-color: #0b0d12; background-size: cover; background-position: center;
+  position: relative;
+}
+.plan-photo::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(20,24,32,0.9) 100%);
+}
+.plan-tier-body { padding: 24px; }
 .plan-name { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
 .plan-price { font-family: 'Bebas Neue', sans-serif; font-size: 40px; color: var(--white); }
 .plan-price span { font-family: 'Barlow', sans-serif; font-size: 13px; color: var(--muted); font-weight: 400; }
-.plan-features { margin: 20px 0 24px; }
+.plan-desc { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 12px 0 16px; }
+.plan-features { margin: 0 0 24px; }
 .plan-features li { font-size: 13px; color: var(--white); padding: 6px 0; display: flex; gap: 8px; align-items: center; }
 .plan-features li::before { content: '✓'; color: var(--green); font-weight: 700; }
 .plan-tier .btn { width: 100%; }
