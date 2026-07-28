@@ -873,6 +873,107 @@ def logout():
     return redirect(url_for('login'))
 
 
+# ── Account Settings (Personal Info + Change Password) ───────
+# Shared across all three roles — admin, staff, and member all edit the
+# same `users` row, so one pair of routes serves every dashboard's
+# Settings tab.
+
+@app.route('/update-profile', methods=['POST'])
+def update_profile():
+    if 'user_id' not in session:
+        return jsonify(success=False, error='Not logged in.'), 401
+
+    user = User.query.get(session['user_id'])
+    if user is None:
+        session.clear()
+        return jsonify(success=False, error='User not found.'), 404
+
+    data = request.get_json(silent=True) or {}
+    first_name     = (data.get('first_name') or '').strip()
+    middle_initial = (data.get('middle_initial') or '').strip()
+    last_name      = (data.get('last_name') or '').strip()
+    extension_name = (data.get('extension_name') or '').strip()
+    email          = (data.get('email') or '').strip()
+    phone          = (data.get('phone') or '').strip()
+    birthday_str   = (data.get('birthday') or '').strip()
+
+    if not first_name or not last_name or not email:
+        return jsonify(success=False, error='First name, last name, and email are required.'), 400
+    if not _valid_name(first_name) or not _valid_name(last_name):
+        return jsonify(success=False, error='Names can only contain letters.'), 400
+    if middle_initial and not _valid_name(middle_initial, extra_chars=''):
+        return jsonify(success=False, error='Middle initial can only contain letters.'), 400
+    if extension_name and not _valid_name(extension_name, extra_chars='. '):
+        return jsonify(success=False, error='Extension name can only contain letters.'), 400
+    if phone and not _valid_phone(phone):
+        return jsonify(success=False, error='Phone number must start with 09 and be exactly 11 digits.'), 400
+
+    existing = User.query.filter(User.email == email, User.id != user.id).first()
+    if existing:
+        return jsonify(success=False, error='That email is already in use by another account.'), 400
+
+    birthday = user.birthday
+    if birthday_str:
+        try:
+            birthday = datetime.strptime(birthday_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify(success=False, error='Invalid birthday format.'), 400
+
+    user.first_name     = first_name
+    user.middle_initial = middle_initial or None
+    user.last_name      = last_name
+    user.extension_name = extension_name or None
+    user.email          = email
+    user.phone          = phone or None
+    user.birthday       = birthday
+    db.session.commit()
+
+    # Keep the session in sync so the sidebar/header reflect the change
+    # immediately without requiring a fresh login.
+    session['name']  = user.full_name
+    session['email'] = user.email
+
+    initials = (user.first_name[0] + user.last_name[0]).upper() if user.first_name and user.last_name else ''
+
+    return jsonify(success=True, message='Profile updated successfully.', user={
+        'name':     user.full_name,
+        'email':    user.email,
+        'initials': initials,
+        'phone':    user.phone or '',
+        'birthday': user.birthday.isoformat() if user.birthday else '',
+    })
+
+
+@app.route('/change-password', methods=['POST'])
+def change_password():
+    if 'user_id' not in session:
+        return jsonify(success=False, error='Not logged in.'), 401
+
+    user = User.query.get(session['user_id'])
+    if user is None:
+        session.clear()
+        return jsonify(success=False, error='User not found.'), 404
+
+    data = request.get_json(silent=True) or {}
+    current_password = data.get('current_password', '')
+    new_password     = data.get('new_password', '')
+    confirm_password = data.get('confirm_password', '')
+
+    if not current_password or not new_password or not confirm_password:
+        return jsonify(success=False, error='Please fill in all fields.'), 400
+    if not check_password_hash(user.password, current_password):
+        return jsonify(success=False, error='Current password is incorrect.'), 400
+    if len(new_password) < 8:
+        return jsonify(success=False, error='New password must be at least 8 characters.'), 400
+    if new_password != confirm_password:
+        return jsonify(success=False, error='New password and confirmation do not match.'), 400
+
+    user.password = generate_password_hash(new_password)
+    db.session.commit()
+
+    return jsonify(success=True, message='Password changed successfully.')
+
+
 @app.route('/member')
 def member():
     if 'role' not in session:
@@ -975,13 +1076,10 @@ def member():
     )
 
 
-@app.route('/staff')
-def staff():
-    if 'role' not in session:
-        return redirect(url_for('login'))
-    if session.get('role') != 'staff':
-        return redirect(url_for(session.get('role', 'login')))
-
+def _get_attendance_today():
+    """Return today's attendance rows (member name, check-in/out, duration, status),
+    newest first. Shared by the Staff dashboard and Admin's Attendance tab so both
+    show the exact same live data instead of drifting out of sync."""
     today = date.today()
     today_start = datetime.combine(today, datetime.min.time())
     today_end   = datetime.combine(today, datetime.max.time())
@@ -1007,6 +1105,18 @@ def staff():
             'duration': duration_text,
             'status': 'Out' if a.check_out else 'In',
         })
+    return attendance_today
+
+
+@app.route('/staff')
+def staff():
+    if 'role' not in session:
+        return redirect(url_for('login'))
+    if session.get('role') != 'staff':
+        return redirect(url_for(session.get('role', 'login')))
+
+    today = date.today()
+    attendance_today = _get_attendance_today()
 
     members = _get_members_with_plans()
     active_members   = [m for m in members if m['status'] == 'Active']
@@ -1029,6 +1139,7 @@ def staff():
         members=members,
         expiring_soon=expiring_soon,
         stats=stats,
+        current_user=User.query.get(session['user_id']),
     )
 
 
@@ -1085,6 +1196,7 @@ def admin():
         return redirect(url_for(session.get('role', 'login')))
 
     members = _get_members_with_plans()
+    attendance_today = _get_attendance_today()
 
     pending_payments_rows = (
         Payment.query
@@ -1125,6 +1237,8 @@ def admin():
         members=members,
         pending_payments=pending_payments,
         payment_history=payment_history,
+        attendance_today=attendance_today,
+        current_user=User.query.get(session['user_id']),
     )
 
 

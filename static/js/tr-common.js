@@ -319,7 +319,7 @@ function submitChangePassword() {
     return;
   }
 
-  const btn = document.querySelector('#change-password-modal .btn-red');
+  const btn = document.getElementById('cp-submit-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
 
   fetch('/change-password', {
@@ -335,11 +335,65 @@ function submitChangePassword() {
         return;
       }
       [currentEl, newEl, confirmEl].forEach(el => { if (el) el.value = ''; });
-      closeModal('change-password-modal');
       showToast(data.message || 'Password changed successfully.', 'success');
     })
     .catch(() => {
       if (btn) { btn.disabled = false; btn.textContent = 'SAVE PASSWORD'; }
+      showToast('Could not reach the server. Please try again.', 'error');
+    });
+}
+
+/** Update personal information (used by the Settings tab on admin/staff/member dashboards)
+ *  — calls the real backend endpoint and refreshes the sidebar on success. */
+function submitProfileUpdate() {
+  const first_name     = _val('pi-fname');
+  const middle_initial = _val('pi-mi');
+  const last_name      = _val('pi-lname');
+  const extension_name = _val('pi-ext');
+  const email          = _val('pi-email');
+  const phone          = _val('pi-phone');
+  const birthday       = document.getElementById('pi-bday')?.value || '';
+
+  if (!first_name || !last_name || !email) {
+    showToast('First name, last name, and email are required.', 'error');
+    return;
+  }
+  if (!/^[A-Za-z\s'-]+$/.test(first_name) || !/^[A-Za-z\s'-]+$/.test(last_name)) {
+    showToast('Names can only contain letters — no numbers.', 'error');
+    return;
+  }
+  if (phone && !/^09\d{9}$/.test(phone)) {
+    showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
+    return;
+  }
+
+  const btn = document.querySelector('#pi-fname')?.closest('.panel')?.querySelector('.btn-red');
+  if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+
+  fetch('/update-profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ first_name, middle_initial, last_name, extension_name, email, phone, birthday })
+  })
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+      if (btn) { btn.disabled = false; btn.textContent = 'SAVE CHANGES'; }
+      if (!ok || !data.success) {
+        showToast(data.error || 'Failed to update profile.', 'error');
+        return;
+      }
+
+      const nameEl   = document.getElementById('sidebar-user-name');
+      const emailEl  = document.getElementById('sidebar-user-email');
+      const avatarEl = document.getElementById('sidebar-user-avatar');
+      if (nameEl)   nameEl.textContent   = data.user.name;
+      if (emailEl)  emailEl.textContent  = data.user.email;
+      if (avatarEl) avatarEl.textContent = data.user.initials;
+
+      showToast(data.message || 'Profile updated successfully.', 'success');
+    })
+    .catch(() => {
+      if (btn) { btn.disabled = false; btn.textContent = 'SAVE CHANGES'; }
       showToast('Could not reach the server. Please try again.', 'error');
     });
 }
@@ -422,6 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.doLogout      = doLogout;
   window.verifyPayment = verifyPayment;
   window.submitChangePassword = submitChangePassword;
+  window.submitProfileUpdate  = submitProfileUpdate;
   window.filterTable   = filterTable;
   window.togglePasswordVisibility = togglePasswordVisibility;
   window.goTo          = (screen) => Navigation.goToScreen(screen);
