@@ -149,7 +149,7 @@ const LoginPage = (() => {
     formData.append('birthday',   birthday);
     formData.append('password',   password);
 
-    const submitBtn = document.querySelector('#reg-step-1 .btn-primary');
+    const submitBtn = document.getElementById('reg-submit-btn');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'SUBMITTING...'; }
 
     fetch('/register', {

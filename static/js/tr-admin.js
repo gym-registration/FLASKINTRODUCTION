@@ -19,6 +19,17 @@ const AdminModule = (() => {
   let currentReportType = null;
   let currentReportPayload = null;
 
+  /** Read the attendance_calendar JSON embedded in admin-dashboard.html */
+  function _parseAdminDashboardData() {
+    const el = document.getElementById('admin-dashboard-data');
+    if (!el) return {};
+    try {
+      return JSON.parse(el.textContent || el.innerText || '{}');
+    } catch (e) {
+      return {};
+    }
+  }
+
   /** Initialize admin dashboard */
   function init() {
     const session = Session.guardDashboard();
@@ -30,9 +41,10 @@ const AdminModule = (() => {
     // Apply role-specific CSS class for sidebar tinting
     document.body.classList.add('role-admin');
 
-    // Build attendance grids
-    buildAttGrid('att-grid-admin', [1, 2, 3, 4, 5, 7, 8, 9, 10]);
-    buildAttGrid('att-grid-admin-full', [1, 2, 3, 4, 5, 7, 8, 9, 10]);
+    // Build attendance grids from real gym-wide data
+    const calendarData = _parseAdminDashboardData();
+    buildAttGrid('att-grid-admin', calendarData.present_days || [], calendarData.days_in_month || 30);
+    buildAttGrid('att-grid-admin-full', calendarData.present_days || [], calendarData.days_in_month || 30);
 
     // Modal close on backdrop click
     _bindModalBackdrops();

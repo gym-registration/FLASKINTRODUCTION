@@ -79,6 +79,10 @@ class User(db.Model):
     status = db.Column(db.String(15), nullable=False, default='pending')
     reset_token         = db.Column(db.String(64), nullable=True, unique=True, index=True)
     reset_token_expires = db.Column(db.DateTime, nullable=True)
+    reset_otp            = db.Column(db.String(255), nullable=True)
+    reset_otp_expires    = db.Column(db.DateTime, nullable=True)
+    reset_otp_attempts   = db.Column(db.Integer, nullable=False, default=0)
+    reset_otp_locked_until = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
@@ -226,63 +230,148 @@ def login():
     return render_template('trmem.html')
 
 
-# ── Forgot / Reset Password ──────────────────────────────────
+# ── Forgot / Reset Password (OTP-based) ──────────────────────
+OTP_LENGTH           = 6
+OTP_VALID_MINUTES    = 10
+OTP_MAX_ATTEMPTS     = 3
+OTP_LOCKOUT_MINUTES  = 30
+
+
+def _generate_otp():
+    return ''.join(secrets.choice(string.digits) for _ in range(OTP_LENGTH))
+
+
+def _now():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
         email = (request.form.get('email') or '').strip().lower()
         user  = User.query.filter_by(email=email).first() if email else None
+        now   = _now()
 
         if user:
-            token = secrets.token_urlsafe(32)
-            user.reset_token         = token
-            user.reset_token_expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)
+            # Still locked out from too many failed OTP attempts — don't send a new code yet.
+            if user.reset_otp_locked_until and user.reset_otp_locked_until > now:
+                remaining = int((user.reset_otp_locked_until - now).total_seconds() // 60) + 1
+                flash(f'Too many incorrect attempts. Please wait {remaining} more minute(s) before requesting a new code.', 'error')
+                return render_template('forgot-password.html')
+
+            otp = _generate_otp()
+            user.reset_otp              = generate_password_hash(otp)
+            user.reset_otp_expires      = now + timedelta(minutes=OTP_VALID_MINUTES)
+            user.reset_otp_attempts     = 0
+            user.reset_otp_locked_until = None
             db.session.commit()
 
-            reset_link = url_for('reset_password', token=token, _external=True)
+            session['otp_email'] = email
 
             if app.config.get('MAIL_USERNAME') and app.config.get('MAIL_PASSWORD'):
                 try:
                     msg = Message(
-                        subject='POWER GYM — Reset Your Password',
+                        subject='POWER GYM — Your Password Reset Code',
                         recipients=[email],
                         body=(
                             f"Hi {user.first_name},\n\n"
-                            f"We received a request to reset your POWER GYM password.\n\n"
-                            f"Click the link below to choose a new password (valid for 1 hour):\n"
-                            f"{reset_link}\n\n"
+                            f"Your POWER GYM password reset code is: {otp}\n\n"
+                            f"This code expires in {OTP_VALID_MINUTES} minutes and can be entered up to "
+                            f"{OTP_MAX_ATTEMPTS} times before you'll need to request a new one.\n\n"
                             f"If you didn't request this, you can safely ignore this email."
                         ),
                     )
                     mail.send(msg)
-                    flash('A password reset link has been sent to your email.', 'success')
+                    flash('A verification code has been sent to your email.', 'success')
                 except Exception as e:
-                    print(f"[MAIL ERROR] Could not send reset email to {email}: {e}")
-                    flash('Could not send the reset email right now. Please try again shortly.', 'error')
+                    print(f"[MAIL ERROR] Could not send OTP email to {email}: {e}")
+                    flash('Could not send the verification code right now. Please try again shortly.', 'error')
+                    return render_template('forgot-password.html')
             else:
                 # No MAIL_USERNAME/MAIL_PASSWORD configured — dev fallback so the
                 # flow stays testable without SMTP credentials set up yet.
-                print(f"[DEV] Email not configured. Password reset link for {email}: {reset_link}")
-                flash(f'Email is not configured yet — here is your reset link (dev mode): {reset_link}', 'success')
+                print(f"[DEV] Email not configured. OTP for {email}: {otp}")
+                flash(f'Email is not configured yet — here is your code (dev mode): {otp}', 'success')
+
+            return redirect(url_for('verify_otp'))
         else:
             # Same message whether or not the email exists, so we don't leak
             # which addresses are registered.
-            flash('If an account with that email exists, a reset link has been sent.', 'success')
+            flash('If an account with that email exists, a verification code has been sent.', 'success')
 
         return render_template('forgot-password.html')
 
     return render_template('forgot-password.html')
 
 
+@app.route('/verify-otp', methods=['GET', 'POST'])
+def verify_otp():
+    email = session.get('otp_email')
+    if not email:
+        flash('Please request a verification code first.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    user = User.query.filter_by(email=email).first()
+    now  = _now()
+
+    if not user:
+        session.pop('otp_email', None)
+        return redirect(url_for('forgot_password'))
+
+    if user.reset_otp_locked_until and user.reset_otp_locked_until > now:
+        remaining = int((user.reset_otp_locked_until - now).total_seconds() // 60) + 1
+        flash(f'Too many incorrect attempts. Please wait {remaining} more minute(s) and request a new code.', 'error')
+        session.pop('otp_email', None)
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        code = (request.form.get('otp') or '').strip()
+
+        if not user.reset_otp or not user.reset_otp_expires or user.reset_otp_expires <= now:
+            flash('Your verification code has expired. Please request a new one.', 'error')
+            session.pop('otp_email', None)
+            return redirect(url_for('forgot_password'))
+
+        if check_password_hash(user.reset_otp, code):
+            # Correct code — issue a short-lived token for the actual password-change screen.
+            token = secrets.token_urlsafe(32)
+            user.reset_token            = token
+            user.reset_token_expires    = now + timedelta(minutes=15)
+            user.reset_otp              = None
+            user.reset_otp_expires      = None
+            user.reset_otp_attempts     = 0
+            user.reset_otp_locked_until = None
+            db.session.commit()
+            session.pop('otp_email', None)
+            return redirect(url_for('reset_password', token=token))
+
+        # Wrong code — count the attempt, lock out after 3 in a row.
+        user.reset_otp_attempts = (user.reset_otp_attempts or 0) + 1
+        if user.reset_otp_attempts >= OTP_MAX_ATTEMPTS:
+            user.reset_otp_locked_until = now + timedelta(minutes=OTP_LOCKOUT_MINUTES)
+            user.reset_otp             = None
+            user.reset_otp_expires     = None
+            db.session.commit()
+            session.pop('otp_email', None)
+            flash(f'Too many incorrect attempts. Please wait {OTP_LOCKOUT_MINUTES} minutes before requesting a new code.', 'error')
+            return redirect(url_for('forgot_password'))
+
+        db.session.commit()
+        remaining_attempts = OTP_MAX_ATTEMPTS - user.reset_otp_attempts
+        flash(f'Incorrect code. {remaining_attempts} attempt(s) remaining.', 'error')
+        return render_template('verify-otp.html', email=email)
+
+    return render_template('verify-otp.html', email=email)
+
+
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = _now()
     user = User.query.filter_by(reset_token=token).first()
     token_valid = user is not None and user.reset_token_expires is not None and user.reset_token_expires > now
 
     if not token_valid:
-        flash('This reset link is invalid or has expired. Please request a new one.', 'error')
+        flash('This reset link is invalid or has expired. Please request a new code.', 'error')
         return redirect(url_for('forgot_password'))
 
     if request.method == 'POST':
@@ -1076,6 +1165,27 @@ def member():
     )
 
 
+def _get_attendance_calendar():
+    """Gym-wide attendance for the current month (which days had at least one
+    check-in). Used to drive the Admin dashboard's attendance grid."""
+    today = date.today()
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    month_start_dt = datetime.combine(today.replace(day=1), datetime.min.time())
+
+    attendance_rows = (
+        Attendance.query
+        .filter(Attendance.check_in >= month_start_dt)
+        .all()
+    )
+    present_days = sorted({a.check_in.day for a in attendance_rows})
+
+    return {
+        'present_days': present_days,
+        'days_in_month': days_in_month,
+        'month_label': today.strftime('%B %Y'),
+    }
+
+
 def _get_attendance_today():
     """Return today's attendance rows (member name, check-in/out, duration, status),
     newest first. Shared by the Staff dashboard and Admin's Attendance tab so both
@@ -1197,6 +1307,7 @@ def admin():
 
     members = _get_members_with_plans()
     attendance_today = _get_attendance_today()
+    attendance_calendar = _get_attendance_calendar()
 
     pending_payments_rows = (
         Payment.query
@@ -1238,6 +1349,7 @@ def admin():
         pending_payments=pending_payments,
         payment_history=payment_history,
         attendance_today=attendance_today,
+        attendance_calendar=attendance_calendar,
         current_user=User.query.get(session['user_id']),
     )
 
