@@ -16,6 +16,42 @@ from datetime import datetime, timezone, date, timedelta
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key')
 
+# ── Timezone: the gym operates on Philippines time, but all timestamps are
+#    stored in the database as naive UTC. Convert to Manila only for display. ──
+MANILA_TZ = timezone(timedelta(hours=8))
+
+
+def _to_manila(dt):
+    """Convert a naive UTC datetime (as stored in the DB) to an aware
+    Philippines-time datetime. Returns None if dt is None."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc).astimezone(MANILA_TZ)
+
+
+def _now_manila():
+    """Current date/time in Philippines time (aware)."""
+    return datetime.now(timezone.utc).astimezone(MANILA_TZ)
+
+
+def _today_manila():
+    """Today's calendar date in Philippines time (so date boundaries — e.g.
+    'today's attendance' — line up with the actual local day, not UTC's)."""
+    return _now_manila().date()
+
+
+def _manila_day_bounds_utc(day):
+    """Given a Philippines calendar date, return the (start, end) naive UTC
+    datetimes bounding that local day — for filtering DB columns that are
+    stored in UTC (e.g. Attendance.check_in)."""
+    start_manila = datetime.combine(day, datetime.min.time()).replace(tzinfo=MANILA_TZ)
+    end_manila   = datetime.combine(day, datetime.max.time()).replace(tzinfo=MANILA_TZ)
+    return (
+        start_manila.astimezone(timezone.utc).replace(tzinfo=None),
+        end_manila.astimezone(timezone.utc).replace(tzinfo=None),
+    )
+
+
 DB_USER = os.environ.get('DB_USER', 'root')
 DB_PASSWORD = os.environ.get('DB_PASSWORD', '')
 DB_HOST = os.environ.get('DB_HOST', '127.0.0.1')
@@ -520,7 +556,7 @@ def admin_add_member():
     db.session.add(new_user)
     db.session.flush()
 
-    start = date.today()
+    start = _today_manila()
     expiry = start + timedelta(days=plan.duration_days)
     new_membership = Membership(
         member_id=new_user.id,
@@ -603,8 +639,8 @@ def admin_edit_member(member_id):
         membership = Membership(
             member_id=user.id,
             plan_id=plan.id if plan else None,
-            start_date=date.today(),
-            expiry_date=expiry_date or date.today(),
+            start_date=_today_manila(),
+            expiry_date=expiry_date or _today_manila(),
             status='active',
         )
         db.session.add(membership)
@@ -680,7 +716,7 @@ def admin_verify_payment(payment_id):
 
     member = payment.member
     plan   = payment.plan
-    today  = date.today()
+    today  = _today_manila()
 
     membership = Membership.query.filter_by(member_id=member.id).first()
     if membership is None:
@@ -808,7 +844,7 @@ def member_submit_payment():
     # ── Reflect the pending selection on the membership record so admin/staff
     #    can see what's awaiting verification. Don't touch an already-active
     #    membership — that stays active until the renewal is approved.
-    today = date.today()
+    today = _today_manila()
     membership = Membership.query.filter_by(member_id=user.id).first()
     if membership is None:
         membership = Membership(
@@ -865,7 +901,7 @@ def staff_record_payment():
 
     # Extend (or create) the member's membership, starting from whichever is later:
     # today, or their current expiry date (so early renewals stack on top of remaining time).
-    today = date.today()
+    today = _today_manila()
     membership = Membership.query.filter_by(member_id=member.id).first()
     if membership is None:
         membership = Membership(member_id=member.id, plan_id=plan.id, start_date=today,
@@ -916,7 +952,7 @@ def staff_checkin():
         success=True,
         message='Check-in recorded.',
         member_name=member.full_name,
-        time=now.strftime('%I:%M %p').lstrip('0'),
+        time=_to_manila(now).strftime('%I:%M %p').lstrip('0'),
     )
 
 
@@ -951,7 +987,7 @@ def staff_checkout():
         success=True,
         message='Check-out recorded.',
         member_name=member.full_name,
-        time=now.strftime('%I:%M %p').lstrip('0'),
+        time=_to_manila(now).strftime('%I:%M %p').lstrip('0'),
         duration=duration_text,
     )
 
@@ -1075,7 +1111,7 @@ def member():
         session.clear()
         return redirect(url_for('login'))
 
-    today = date.today()
+    today = _today_manila()
 
     # ── Current plan / membership ──
     membership = Membership.query.filter_by(member_id=user.id).first()
@@ -1110,7 +1146,7 @@ def member():
     # ── Attendance (current month) ──
     days_in_month = calendar.monthrange(today.year, today.month)[1]
     month_start    = today.replace(day=1)
-    month_start_dt = datetime.combine(month_start, datetime.min.time())
+    month_start_dt, _ = _manila_day_bounds_utc(month_start)
 
     attendance_rows = (
         Attendance.query
@@ -1119,7 +1155,7 @@ def member():
         .all()
     )
 
-    present_days = sorted({a.check_in.day for a in attendance_rows})
+    present_days = sorted({_to_manila(a.check_in).day for a in attendance_rows})
 
     session_history = []
     for a in attendance_rows[:10]:
@@ -1128,10 +1164,12 @@ def member():
             mins = a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
             h, m = divmod(mins, 60)
             duration_text = f'{h}h {m}m' if h else f'{m}m'
+        check_in_manila  = _to_manila(a.check_in)
+        check_out_manila = _to_manila(a.check_out)
         session_history.append({
-            'date':      a.check_in.strftime('%b %d, %Y'),
-            'check_in':  a.check_in.strftime('%I:%M %p').lstrip('0'),
-            'check_out': a.check_out.strftime('%I:%M %p').lstrip('0') if a.check_out else '—',
+            'date':      check_in_manila.strftime('%b %d, %Y'),
+            'check_in':  check_in_manila.strftime('%I:%M %p').lstrip('0'),
+            'check_out': check_out_manila.strftime('%I:%M %p').lstrip('0') if check_out_manila else '—',
             'duration':  duration_text,
         })
 
@@ -1168,16 +1206,16 @@ def member():
 def _get_attendance_calendar():
     """Gym-wide attendance for the current month (which days had at least one
     check-in). Used to drive the Admin dashboard's attendance grid."""
-    today = date.today()
+    today = _today_manila()
     days_in_month = calendar.monthrange(today.year, today.month)[1]
-    month_start_dt = datetime.combine(today.replace(day=1), datetime.min.time())
+    month_start_dt, _ = _manila_day_bounds_utc(today.replace(day=1))
 
     attendance_rows = (
         Attendance.query
         .filter(Attendance.check_in >= month_start_dt)
         .all()
     )
-    present_days = sorted({a.check_in.day for a in attendance_rows})
+    present_days = sorted({_to_manila(a.check_in).day for a in attendance_rows})
 
     return {
         'present_days': present_days,
@@ -1190,9 +1228,8 @@ def _get_attendance_today():
     """Return today's attendance rows (member name, check-in/out, duration, status),
     newest first. Shared by the Staff dashboard and Admin's Attendance tab so both
     show the exact same live data instead of drifting out of sync."""
-    today = date.today()
-    today_start = datetime.combine(today, datetime.min.time())
-    today_end   = datetime.combine(today, datetime.max.time())
+    today = _today_manila()
+    today_start, today_end = _manila_day_bounds_utc(today)
 
     rows = (
         Attendance.query
@@ -1208,14 +1245,79 @@ def _get_attendance_today():
             mins = a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
             h, m = divmod(mins, 60)
             duration_text = f'{h}h {m}m' if h else f'{m}m'
+        check_in_manila  = _to_manila(a.check_in)
+        check_out_manila = _to_manila(a.check_out)
         attendance_today.append({
             'member_name': a.member.full_name,
-            'check_in': a.check_in.strftime('%I:%M %p').lstrip('0'),
-            'check_out': a.check_out.strftime('%I:%M %p').lstrip('0') if a.check_out else '—',
+            'check_in': check_in_manila.strftime('%I:%M %p').lstrip('0'),
+            'check_out': check_out_manila.strftime('%I:%M %p').lstrip('0') if check_out_manila else '—',
             'duration': duration_text,
             'status': 'Out' if a.check_out else 'In',
         })
     return attendance_today
+
+
+def _get_members_checkin_status():
+    """Members who have a membership plan, with today's check-in status, times,
+    and duration — powers the staff Check-in/Out table (one row per member)."""
+    today = _today_manila()
+    today_start, today_end = _manila_day_bounds_utc(today)
+
+    members = [m for m in _get_members_with_plans() if m['plan'] != '—']
+
+    result = []
+    for m in members:
+        entries = (
+            Attendance.query
+            .filter(
+                Attendance.member_id == m['id'],
+                Attendance.check_in >= today_start,
+                Attendance.check_in <= today_end,
+            )
+            .order_by(Attendance.check_in.desc())
+            .all()
+        )
+        latest     = entries[0] if entries else None
+        open_entry = next((e for e in entries if e.check_out is None), None)
+
+        if open_entry is not None:
+            checkin_status = 'in'
+        elif latest is not None:
+            checkin_status = 'out'
+        else:
+            checkin_status = 'none'
+
+        latest_check_in_manila  = _to_manila(latest.check_in) if latest else None
+        latest_check_out_manila = _to_manila(latest.check_out) if latest and latest.check_out else None
+
+        check_in_text  = latest_check_in_manila.strftime('%I:%M %p').lstrip('0') if latest_check_in_manila else '—'
+        check_out_text = latest_check_out_manila.strftime('%I:%M %p').lstrip('0') if latest_check_out_manila else '—'
+
+        duration_text = '—'
+        if latest and latest.check_out:
+            mins = latest.duration_min if latest.duration_min is not None else int((latest.check_out - latest.check_in).total_seconds() // 60)
+            h, mnt = divmod(mins, 60)
+            duration_text = f'{h}h {mnt}m' if h else f'{mnt}m'
+        elif open_entry is not None:
+            duration_text = 'Ongoing'
+
+        # check_in is stored as a naive UTC datetime; append 'Z' so the browser
+        # parses it as UTC and converts to the staff member's local clock.
+        check_in_iso = (open_entry.check_in.isoformat() + 'Z') if open_entry is not None else None
+
+        result.append({
+            'id': m['id'],
+            'name': m['name'],
+            'email': m['email'],
+            'plan': m['plan'],
+            'plan_status': m['status'],
+            'checkin_status': checkin_status,   # 'in' | 'out' | 'none'
+            'check_in': check_in_text,
+            'check_out': check_out_text,
+            'duration': duration_text,
+            'check_in_iso': check_in_iso,
+        })
+    return result
 
 
 @app.route('/staff')
@@ -1225,7 +1327,7 @@ def staff():
     if session.get('role') != 'staff':
         return redirect(url_for(session.get('role', 'login')))
 
-    today = date.today()
+    today = _today_manila()
     attendance_today = _get_attendance_today()
 
     members = _get_members_with_plans()
@@ -1247,6 +1349,7 @@ def staff():
         'staff-dashboard.html',
         attendance_today=attendance_today,
         members=members,
+        members_checkin=_get_members_checkin_status(),
         expiring_soon=expiring_soon,
         stats=stats,
         current_user=User.query.get(session['user_id']),
@@ -1264,7 +1367,7 @@ def _get_members_with_plans():
         .all()
     )
 
-    today = date.today()
+    today = _today_manila()
     members = []
     for user, membership, plan in rows:
         expiry_date = None

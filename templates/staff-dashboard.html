@@ -86,8 +86,13 @@
           <div class="panel-header"><div class="panel-title">Quick Check-in</div></div>
           <div class="panel-body">
             <div class="form-group">
-              <label class="form-label">Member ID or Email</label>
-              <input class="form-input" placeholder="Search member..." id="staff-checkin-quick">
+              <label class="form-label">Select Member</label>
+              <select class="form-input" id="staff-checkin-quick">
+                <option value="">Choose a member...</option>
+                {% for m in members %}
+                <option value="{{ m.email }}">{{ m.name }} — {{ m.status }}</option>
+                {% endfor %}
+              </select>
             </div>
             <div style="display:flex;gap:10px;">
               <button class="btn btn-green"  style="flex:1;" onclick="checkInMember('staff-checkin-quick')">✓ CHECK IN</button>
@@ -143,34 +148,37 @@
 
     <!-- ── Check-in / Out ───────────────── -->
     <div id="staff-checkin" class="sub-panel">
-      <div class="page-header"><div><div class="page-title">CHECK-IN / OUT</div><div class="page-subtitle">Record member entry and exit</div></div></div>
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">Log Attendance</div></div>
-        <div class="panel-body">
-          <div class="form-group">
-            <label class="form-label">Member ID or Email</label>
-            <input class="form-input" id="staff-checkin-log" placeholder="Enter member ID or email...">
-          </div>
-          <div style="display:flex;gap:10px;">
-            <button class="btn btn-green"  style="flex:1;" onclick="checkInMember('staff-checkin-log')">✓ CHECK IN</button>
-            <button class="btn btn-outline" style="flex:1;" onclick="checkOutMember('staff-checkin-log')">← CHECK OUT</button>
-          </div>
-        </div>
+      <div class="page-header">
+        <div><div class="page-title">CHECK-IN / OUT</div><div class="page-subtitle">Record member entry and exit</div></div>
+        <input class="search-input" id="checkin-search" placeholder="Search members..." oninput="filterCheckinTable(this.value)">
       </div>
       <div class="panel">
-        <div class="panel-header"><div class="panel-title">Today's Log</div></div>
-        <table class="data-table">
-          <thead><tr><th>Member</th><th>Check-in</th><th>Check-out</th><th>Duration</th></tr></thead>
+        <table class="data-table" id="checkin-table">
+          <thead><tr><th>Member</th><th>Plan</th><th>Check-in</th><th>Check-out</th><th>Duration</th><th>Action</th></tr></thead>
           <tbody>
-            {% for a in attendance_today %}
-            <tr>
-              <td>{{ a.member_name }}</td>
-              <td>{{ a.check_in }}</td>
-              <td>{{ a.check_out }}</td>
-              <td>{{ a.duration }}</td>
+            {% for m in members_checkin %}
+            <tr data-name="{{ m.name|lower }}" data-email="{{ m.email }}">
+              <td>{{ m.name }}</td>
+              <td>{{ m.plan }}</td>
+              <td class="cell-checkin">{{ m.check_in }}</td>
+              <td class="cell-checkout">{{ m.check_out }}</td>
+              <td class="cell-duration">
+                {% if m.checkin_status == 'in' %}
+                <span class="live-duration" data-checkin="{{ m.check_in_iso }}">Ongoing</span>
+                {% else %}
+                {{ m.duration }}
+                {% endif %}
+              </td>
+              <td class="cell-action">
+                {% if m.checkin_status == 'in' %}
+                <button class="btn btn-outline btn-sm" onclick="checkOutMember('{{ m.email }}')">← CHECK OUT</button>
+                {% else %}
+                <button class="btn btn-green btn-sm" onclick="checkInMember('{{ m.email }}')">✓ CHECK IN</button>
+                {% endif %}
+              </td>
             </tr>
             {% else %}
-            <tr><td colspan="4" style="text-align:center;color:var(--muted);">No attendance logged yet today.</td></tr>
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);">No members with a plan yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -181,14 +189,25 @@
     <div id="staff-members" class="sub-panel">
       <div class="page-header">
         <div><div class="page-title">MEMBER DIRECTORY</div><div class="page-subtitle">View-only access</div></div>
-        <input class="search-input" placeholder="Search members...">
+        <input class="search-input" id="members-search" placeholder="Search members..." oninput="filterMembersTable()">
       </div>
+
+      <!-- Status filter pills -->
+      <div class="status-filter-bar" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <button type="button" class="status-pill active" data-status="all" onclick="filterMembersByStatus('all', this)">All</button>
+        <button type="button" class="status-pill" data-status="active" onclick="filterMembersByStatus('active', this)">Active</button>
+        <button type="button" class="status-pill" data-status="pending" onclick="filterMembersByStatus('pending', this)">Pending</button>
+        <button type="button" class="status-pill" data-status="expired" onclick="filterMembersByStatus('expired', this)">Expired</button>
+        <button type="button" class="status-pill" data-status="no-plan" onclick="filterMembersByStatus('no-plan', this)">No Plan</button>
+      </div>
+
       <div class="panel">
-        <table class="data-table">
+        <table class="data-table" id="members-table">
           <thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Expiry</th><th>Status</th></tr></thead>
           <tbody>
             {% for m in members %}
-            <tr>
+            <tr data-name="{{ m.name|lower }}"
+                data-status="{{ 'active' if m.status == 'Active' else 'pending' if m.status == 'Pending' else 'expired' if m.status == 'Expired' else 'no-plan' }}">
               <td>#{{ m.id }}</td><td>{{ m.name }}</td><td>{{ m.plan }}</td><td>{{ m.expiry }}</td>
               <td>
                 {% if m.status == 'Active' %}
@@ -207,6 +226,9 @@
             {% endfor %}
           </tbody>
         </table>
+        <div id="members-empty-state" style="display:none;text-align:center;color:var(--muted);padding:20px;">
+          No members match this filter.
+        </div>
       </div>
     </div><!-- /staff-members -->
 
