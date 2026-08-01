@@ -100,9 +100,16 @@
               <div>
                 <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
                 <div style="font-size:12px;color:var(--muted);">{{ p.method }} · Ref: {{ p.reference }} · Txn: #{{ p.txn }} · ₱{{ p.amount }}</div>
-                <div style="margin-top:8px;"><span class="badge badge-blue">Pending</span></div>
+                <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                  <span class="badge badge-blue">Pending</span>
+                  {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
+                  {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
+                </div>
               </div>
               <div style="display:flex;gap:8px;">
+                {% if p.is_student and p.student_id_image_path %}
+                <button class="btn btn-sm btn-outline" data-id-url="{{ url_for('static', filename=p.student_id_image_path) }}" onclick="viewPaymentProof(this.dataset.idUrl)">🎓 View School ID</button>
+                {% endif %}
                 <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Approve</button>
                 <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
               </div>
@@ -177,13 +184,20 @@
             <div>
               <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
               <div style="font-size:12px;color:var(--muted);">{{ p.method }} · Ref: {{ p.reference }} · Txn: #{{ p.txn }} · ₱{{ p.amount }}</div>
-              <div style="margin-top:8px;"><span class="badge badge-blue">Pending</span></div>
+              <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="badge badge-blue">Pending</span>
+                {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
+                {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
+              </div>
             </div>
             <div style="display:flex;gap:8px;">
               {% if p.proof_image_path %}
               <button class="btn btn-sm btn-outline" data-proof-url="{{ url_for('static', filename=p.proof_image_path) }}" onclick="viewPaymentProof(this.dataset.proofUrl)">👁 View Proof</button>
               {% else %}
-              <span class="badge badge-muted" style="align-self:center;">No proof (cash)</span>
+              <span class="badge badge-muted" style="align-self:center;">Payment not yet confirmed</span>
+              {% endif %}
+              {% if p.is_student and p.student_id_image_path %}
+              <button class="btn btn-sm btn-outline" data-id-url="{{ url_for('static', filename=p.student_id_image_path) }}" onclick="viewPaymentProof(this.dataset.idUrl)">🎓 View School ID</button>
               {% endif %}
               <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Approve</button>
               <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
@@ -201,7 +215,9 @@
           <tbody>
             {% for p in payment_history %}
             <tr>
-              <td>#{{ p.txn }}</td><td>{{ p.member_name }}</td><td>{{ p.plan }}</td><td>{{ p.method }}</td><td>₱{{ p.amount }}</td><td>{{ p.date }}</td>
+              <td>#{{ p.txn }}</td>
+              <td>{{ p.member_name }}{% if p.is_student %} <span class="badge badge-gold" style="margin-left:4px;">🎓</span>{% endif %}{% if p.wants_coach %} <span class="badge badge-green" style="margin-left:4px;" title="Coach: {{ p.coach_name }}">🏋</span>{% endif %}</td>
+              <td>{{ p.plan }}</td><td>{{ p.method }}</td><td>₱{{ p.amount }}</td><td>{{ p.date }}</td>
               <td>
                 {% if p.status == 'verified' %}
                 <span class="badge badge-green">Approved</span>
@@ -471,9 +487,10 @@
     <div class="form-group"><label class="form-label">Phone</label><input id="add-member-phone" class="form-input" placeholder="09171234567" maxlength="11" inputmode="numeric" pattern="09\d{9}" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)"></div>
     <div class="form-group"><label class="form-label">Plan</label>
       <select id="add-member-plan" class="form-input">
-        <option>Monthly — ₱999</option>
-        <option>Quarterly — ₱2,499</option>
-        <option>Annual — ₱7,999</option>
+        <option>Daily — ₱100</option>
+        <option>Weekly — ₱450</option>
+        <option>Monthly — ₱900</option>
+        <option>Yearly — ₱7,000</option>
       </select>
     </div>
     <button class="btn btn-red" style="width:100%;margin-top:8px;" onclick="addMember()">ADD MEMBER</button>
@@ -494,10 +511,10 @@
     <div class="form-group"><label class="form-label">Phone</label><input id="edit-member-phone" class="form-input" placeholder="09171234567" maxlength="11" inputmode="numeric" pattern="09\d{9}" oninput="this.value=this.value.replace(/\D/g,'').slice(0,11)"></div>
     <div class="form-group"><label class="form-label">Plan</label>
       <select id="edit-member-plan" class="form-input">
-        <option>Daily — ₱80</option>
-        <option>Monthly — ₱999</option>
-        <option>Quarterly — ₱2,499</option>
-        <option>Annual — ₱7,999</option>
+        <option>Daily — ₱100</option>
+        <option>Weekly — ₱450</option>
+        <option>Monthly — ₱900</option>
+        <option>Yearly — ₱7,000</option>
       </select>
     </div>
     <div class="form-group"><label class="form-label">Expiry Date</label><input id="edit-member-expiry" class="form-input" type="date"></div>

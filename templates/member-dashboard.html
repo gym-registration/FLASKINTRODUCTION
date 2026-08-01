@@ -34,20 +34,20 @@
       <div class="nav-item" id="nav-member-overview"    onclick="memberTab('overview',this)">
         <span class="nav-icon">🏠</span> Overview
       </div>
+      <div class="nav-item" id="nav-member-services"    onclick="memberTab('services',this)">
+        <span class="nav-icon">🏋️</span> Services
+      </div>
       <div class="nav-item" id="nav-member-membership"  onclick="memberTab('membership',this)">
         <span class="nav-icon">🎫</span> My Membership
       </div>
-      <div class="nav-item {{ '' if plan_active else 'locked' }}" id="nav-member-attendance"  onclick="memberTab('attendance',this)">
-        <span class="nav-icon">📅</span> My Attendance {% if not plan_active %}<span class="nav-lock">🔒</span>{% endif %}
+      <div class="nav-item" id="nav-member-payment"      onclick="memberTab('payment',this)">
+        <span class="nav-icon">💳</span> Payment
       </div>
-      <div class="nav-item {{ '' if plan_active else 'locked' }}" id="nav-member-goals"       onclick="memberTab('goals',this)">
-        <span class="nav-icon">🎯</span> Body Goals {% if not plan_active %}<span class="nav-lock">🔒</span>{% endif %}
+      <div class="nav-item" id="nav-member-goals"       onclick="memberTab('goals',this)">
+        <span class="nav-icon">🎯</span> Body Goals
       </div>
-      <div class="nav-item {{ '' if plan_active else 'locked' }}" id="nav-member-services"    onclick="memberTab('services',this)">
-        <span class="nav-icon">🏋️</span> Services {% if not plan_active %}<span class="nav-lock">🔒</span>{% endif %}
-      </div>
-      <div class="nav-item" id="nav-member-settings" onclick="memberTab('settings',this)">
-        <span class="nav-icon">⚙️</span> Settings
+      <div class="nav-item" id="nav-member-attendance"  onclick="memberTab('attendance',this)">
+        <span class="nav-icon">📅</span> My Attendance
       </div>
     </nav>
 
@@ -59,7 +59,7 @@
           <div class="user-email" id="sidebar-user-email">{{ member.email }}</div>
         </div>
       </div>
-      <button class="btn-change-pass" onclick="memberTab('settings', document.getElementById('nav-member-settings'))">⚙️ SETTINGS</button>
+      <button class="btn-change-pass" id="nav-member-settings" onclick="memberTab('settings',this)">⚙️ SETTINGS</button>
       <button class="btn-logout" onclick="doLogout()">⏻ SIGN OUT</button>
     </div>
   </div><!-- /sidebar -->
@@ -110,7 +110,7 @@
         <span class="gate-banner-icon">🔒</span>
         <div>
           <div class="gate-banner-title">Activate your membership</div>
-          <div class="gate-banner-text">Pay for a plan to unlock check-in tracking, body goals, and gym services. Head to <strong>My Membership</strong> to get started.</div>
+          <div class="gate-banner-text">Pay for a plan to start your membership and get the most out of Power Gym. Head to <strong>My Membership</strong> to get started.</div>
         </div>
         <button class="btn btn-red btn-sm" onclick="memberTab('membership', document.getElementById('nav-member-membership'))">CHOOSE A PLAN</button>
       </div>
@@ -137,7 +137,81 @@
         </div>
       </div>
       {% endif %}
-      <div class="grid-2">
+      <div class="grid-2" style="grid-template-columns: 2.2fr 1fr;">
+        <!-- Choose / Upgrade / Renew -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">{% if plan %}Upgrade / Renew{% else %}Choose a Plan{% endif %}</div></div>
+          <div class="panel-body">
+            <div class="plan-grid">
+              <div class="plan-card" onclick="selectPlan(this,'daily')">
+                <div class="plan-name">Daily</div><div class="plan-price">₱100</div>
+                <div class="plan-view-link" onclick="event.stopPropagation();openPlanModal('daily')">👁 View Inclusions</div>
+              </div>
+              <div class="plan-card" onclick="selectPlan(this,'weekly')">
+                <div class="plan-name">Weekly</div><div class="plan-price">₱450</div>
+                <div class="plan-view-link" onclick="event.stopPropagation();openPlanModal('weekly')">👁 View Inclusions</div>
+              </div>
+              <div class="plan-card" onclick="selectPlan(this,'monthly')">
+                <div class="plan-name">Monthly</div><div class="plan-price">₱900</div>
+                <div class="plan-view-link" onclick="event.stopPropagation();openPlanModal('monthly')">👁 View Inclusions</div>
+              </div>
+              <div class="plan-card" onclick="selectPlan(this,'yearly')">
+                <div class="plan-name">Yearly ⭐</div><div class="plan-price">₱7,000</div>
+                <div class="plan-view-link" onclick="event.stopPropagation();openPlanModal('yearly')">👁 View Inclusions</div>
+              </div>
+            </div>
+
+            <!-- Plan request -->
+            <div class="proof-upload-box">
+              <div class="form-group">
+                <label class="form-label">When do you want to start?</label>
+                <input class="form-input" type="date" id="member-renew-start">
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                  Pick today to start right away, or a future date if you'd rather begin later.
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Are you a student?</label>
+                <select class="form-input" id="member-renew-student" onchange="toggleStudentIdField(this)">
+                  <option value="no">No</option>
+                  <option value="yes">Yes — I have a valid school ID</option>
+                </select>
+              </div>
+              <div class="form-group" id="member-student-id-group" style="display:none;">
+                <label class="form-label">Upload School ID (front, photo or scan)</label>
+                <input class="form-input" type="file" id="member-student-id" accept="image/*"
+                       onchange="previewStudentId(this)">
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                  Required to verify student status. Admin will confirm before your plan is approved.
+                </div>
+                <img id="member-student-id-preview" class="proof-preview" alt="School ID preview" style="display:none;">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Do you want a coach?</label>
+                <select class="form-input" id="member-renew-coach-toggle" onchange="toggleCoachField(this)">
+                  <option value="no">No</option>
+                  <option value="yes">Yes — assign me a coach</option>
+                </select>
+              </div>
+              <div class="form-group" id="member-coach-name-group" style="display:none;">
+                <label class="form-label">Choose a Coach</label>
+                <select class="form-input" id="member-renew-coach-name">
+                  <option value="">Select coach...</option>
+                  <option value="Ronel Samar">Ronel Samar</option>
+                  <option value="Jonathan Natividad">Jonathan Natividad</option>
+                </select>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:4px;line-height:1.6;">
+                Submitting sends this plan as a request. Please settle payment (GCash or Cash) at
+                the front desk with staff — your plan activates once staff or admin confirms payment.
+              </div>
+              <button class="btn btn-red" style="margin-top:16px;width:100%;" onclick="submitRenewalPayment()">
+                {% if plan %}REQUEST RENEWAL{% else %}REQUEST THIS PLAN{% endif %}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Current plan details -->
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Current Plan</div></div>
@@ -155,61 +229,41 @@
             {% endif %}
           </div>
         </div>
-
-        <!-- Choose / Upgrade / Renew -->
-        <div class="panel">
-          <div class="panel-header"><div class="panel-title">{% if plan %}Upgrade / Renew{% else %}Choose a Plan{% endif %}</div></div>
-          <div class="panel-body">
-            <div class="plan-grid">
-              <div class="plan-card" onclick="selectPlan(this,'daily')">
-                <div class="plan-name">Daily</div><div class="plan-price">₱80</div>
-              </div>
-              <div class="plan-card" onclick="selectPlan(this,'monthly')">
-                <div class="plan-name">Monthly</div><div class="plan-price">₱999</div>
-              </div>
-              <div class="plan-card" onclick="selectPlan(this,'quarterly')">
-                <div class="plan-name">Quarterly</div><div class="plan-price">₱2,499</div>
-              </div>
-              <div class="plan-card" onclick="selectPlan(this,'annual')">
-                <div class="plan-name">Annual ⭐</div><div class="plan-price">₱7,999</div>
-              </div>
-            </div>
-
-            <!-- Payment proof upload -->
-            <div class="proof-upload-box">
-              <div class="gcash-info-box">
-                <span class="gcash-info-icon">📱</span>
-                <div>
-                  <div class="gcash-info-title">SEND GCASH PAYMENT TO</div>
-                  <div class="gcash-info-text"><strong>LYDIA M. EMATA</strong> — 0945 397 0594</div>
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Choose Payment Method</label>
-                <select class="form-input" id="member-renew-method">
-                  <option value="">Select method...</option>
-                  <option value="GCash">GCash</option>
-                  <option value="Cash">Cash</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Reference Number</label>
-                <input class="form-input" id="member-renew-ref" placeholder="e.g. GC-123456">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Upload Screenshot Proof</label>
-                <input class="form-input" type="file" id="member-renew-proof" accept="image/*"
-                       onchange="previewRenewProof(this)">
-              </div>
-              <img id="member-renew-preview" class="proof-preview" alt="Payment proof preview" style="display:none;">
-              <button class="btn btn-red" style="margin-top:16px;width:100%;" onclick="submitRenewalPayment()">
-                {% if plan %}SUBMIT RENEWAL PAYMENT{% else %}SUBMIT PAYMENT{% endif %}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div><!-- /member-membership -->
+
+    <!-- ── Payment History ───────────────── -->
+    <div id="member-payment" class="sub-panel">
+      <div class="page-header"><div><div class="page-title">PAYMENT HISTORY</div><div class="page-subtitle">Your submitted payments and their verification status</div></div></div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">All Payments</div></div>
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Method</th><th>Reference</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for p in payment_history %}
+            <tr>
+              <td>{{ p.date }}</td>
+              <td>{{ p.plan }}</td>
+              <td>₱{{ p.amount }}</td>
+              <td>{{ p.method }}</td>
+              <td>{{ p.reference }}</td>
+              <td>
+                {% if p.status == 'verified' %}
+                <span class="badge badge-green">Approved</span>
+                {% elif p.status == 'rejected' %}
+                <span class="badge badge-red">Rejected</span>
+                {% else %}
+                <span class="badge badge-blue">Pending</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);">No payments submitted yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /member-payment -->
 
     <!-- ── My Attendance ────────────────── -->
     <div id="member-attendance" class="sub-panel">
@@ -282,26 +336,57 @@
     <!-- ── Services ─────────────────────── -->
     <div id="member-services" class="sub-panel">
       <div class="page-header"><div><div class="page-title">GYM SERVICES</div></div></div>
-      <div class="grid-3">
-        <div class="panel">
-          <div class="panel-body" style="text-align:center;padding:28px 16px;">
-            <div style="font-size:36px;margin-bottom:10px;">🏋️</div>
-            <div class="panel-title">Free Weights</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Dumbbells, barbells, plates</div>
+      <div class="grid-4">
+        <div class="panel service-card" onclick="openServiceModal('boxing')">
+          <div class="panel-body" style="text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">🥊</div>
+            <div class="panel-title">Boxing</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Gloves, punching bags, sparring</div>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-body" style="text-align:center;padding:28px 16px;">
+        <div class="panel service-card" onclick="openServiceModal('strengthening')">
+          <div class="panel-body" style="text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">💪</div>
+            <div class="panel-title">Strengthening</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Free weights, machines, resistance training</div>
+          </div>
+        </div>
+        <div class="panel service-card" onclick="openServiceModal('weightloss')">
+          <div class="panel-body" style="text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">🔥</div>
+            <div class="panel-title">Weight Loss</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Fat-burning circuits and programs</div>
+          </div>
+        </div>
+        <div class="panel service-card" onclick="openServiceModal('cardio')">
+          <div class="panel-body" style="text-align:center;">
             <div style="font-size:36px;margin-bottom:10px;">🚴</div>
             <div class="panel-title">Cardio Zone</div>
             <div style="font-size:12px;color:var(--muted);margin-top:6px;">Bikes, treadmills, rowing</div>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-body" style="text-align:center;padding:28px 16px;">
-            <div style="font-size:36px;margin-bottom:10px;">🥊</div>
-            <div class="panel-title">Boxing</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Gloves, punching bags, sparring</div>
+      </div>
+
+      <div class="panel" style="margin-top:20px;">
+        <div class="panel-header"><div class="panel-title">Gym Machines and Equipment</div></div>
+        <div class="panel-body">
+          <div class="equip-grid">
+            <div class="equip-item"><span class="equip-item-icon">🏋️</span> Dumbbells</div>
+            <div class="equip-item"><span class="equip-item-icon">🏋️‍♂️</span> Barbells &amp; Plates</div>
+            <div class="equip-item"><span class="equip-item-icon">🛋️</span> Bench Press</div>
+            <div class="equip-item"><span class="equip-item-icon">🗄️</span> Squat Rack</div>
+            <div class="equip-item"><span class="equip-item-icon">🔗</span> Cable Machine</div>
+            <div class="equip-item"><span class="equip-item-icon">⬇️</span> Lat Pulldown</div>
+            <div class="equip-item"><span class="equip-item-icon">🦵</span> Leg Press Machine</div>
+            <div class="equip-item"><span class="equip-item-icon">🛠️</span> Smith Machine</div>
+            <div class="equip-item"><span class="equip-item-icon">🏃</span> Treadmills</div>
+            <div class="equip-item"><span class="equip-item-icon">🚴</span> Exercise Bikes</div>
+            <div class="equip-item"><span class="equip-item-icon">🚣</span> Rowing Machines</div>
+            <div class="equip-item"><span class="equip-item-icon">🌀</span> Ellipticals</div>
+            <div class="equip-item"><span class="equip-item-icon">⚫</span> Kettlebells</div>
+            <div class="equip-item"><span class="equip-item-icon">🪢</span> Jump Ropes</div>
+            <div class="equip-item"><span class="equip-item-icon">🎯</span> Pull-up Bars</div>
+            <div class="equip-item"><span class="equip-item-icon">🥊</span> Punching Bags</div>
           </div>
         </div>
       </div>
@@ -423,6 +508,29 @@
     <div class="form-group"><label class="form-label">Notes</label><input class="form-input" value="{{ goal.notes if goal and goal.notes else '' }}" placeholder="e.g. Focus on cardio this week"></div>
     <button class="btn btn-red" style="width:100%;margin-top:8px;"
             onclick="closeModal('goals-modal');showToast('Body goals updated!','success')">SAVE GOALS</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="service-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('service-modal')">✕</button>
+    <div style="font-size:40px;text-align:center;margin-bottom:6px;" id="service-modal-icon">🥊</div>
+    <div class="modal-title" style="text-align:center;" id="service-modal-title">BOXING</div>
+    <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:18px;" id="service-modal-subtitle">Gloves, punching bags, sparring</div>
+    <div class="panel-title" style="margin-bottom:4px;">What's included</div>
+    <ul class="plan-features" id="service-modal-list"></ul>
+  </div>
+</div>
+
+<div class="modal-overlay" id="plan-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('plan-modal')">✕</button>
+    <div class="modal-title" style="text-align:center;" id="plan-modal-title">MONTHLY</div>
+    <div style="font-family:'Bebas Neue';font-size:30px;color:var(--red);text-align:center;margin-bottom:4px;" id="plan-modal-price">₱900</div>
+    <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:18px;" id="plan-modal-subtitle">Full gym access, billed monthly</div>
+    <div class="panel-title" style="margin-bottom:4px;">What's included</div>
+    <ul class="plan-features" id="plan-modal-list"></ul>
+    <button class="btn btn-red" style="margin-top:18px;width:100%;" id="plan-modal-select-btn" onclick="selectPlanFromModal()">SELECT THIS PLAN</button>
   </div>
 </div>
 

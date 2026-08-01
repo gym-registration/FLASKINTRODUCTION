@@ -277,7 +277,7 @@ const AdminModule = (() => {
         title: 'Membership Report',
         stats: [{ label: 'Active Members', value: '193' }, { label: 'Expired Members', value: '41' }, { label: 'Pending Members', value: '14' }],
         headers: ['Member', 'Plan', 'Status', 'Expiry'],
-        rows: [['Maria Santos', 'Monthly', 'Active', 'May 10, 2026'], ['Jose Reyes', 'Annual', 'Active', 'Apr 10, 2027'], ['Ana Cruz', 'Daily', 'Pending', 'Apr 10, 2026'], ['Carlo Dela Rosa', 'Quarterly', 'Expired', 'Jan 5, 2026']],
+        rows: [['Maria Santos', 'Monthly', 'Active', 'May 10, 2026'], ['Jose Reyes', 'Yearly', 'Active', 'Apr 10, 2027'], ['Ana Cruz', 'Daily', 'Pending', 'Apr 10, 2026'], ['Carlo Dela Rosa', 'Weekly', 'Expired', 'Jan 5, 2026']],
         chartLabel: 'Membership Status',
         chartSeries: [{ label: 'Active', value: 193 }, { label: 'Expired', value: 41 }, { label: 'Pending', value: 14 }]
       },
@@ -374,9 +374,10 @@ const AdminModule = (() => {
   function _calculateExpiry(planName) {
     const expiry = new Date();
     const plan   = planName.toLowerCase();
-    if (plan === 'annual')        expiry.setDate(expiry.getDate() + 365);
-    else if (plan === 'quarterly') expiry.setDate(expiry.getDate() + 90);
-    else                           expiry.setDate(expiry.getDate() + 30);
+    if (plan === 'yearly')       expiry.setDate(expiry.getDate() + 365);
+    else if (plan === 'weekly')  expiry.setDate(expiry.getDate() + 7);
+    else if (plan === 'daily')   expiry.setDate(expiry.getDate() + 1);
+    else                          expiry.setDate(expiry.getDate() + 30);
     return expiry;
   }
 

@@ -109,12 +109,12 @@ const LoginPage = (() => {
       showToast('Please fill in all required fields.', 'error');
       return;
     }
-    if (!/^[A-Za-z\s'-]+$/.test(firstName) || !/^[A-Za-z\s'-]+$/.test(lastName)) {
-      showToast('Names can only contain letters — no numbers.', 'error');
+    if (!/^[A-Z][a-z'-]*(\s[A-Z][a-z'-]*)*$/.test(firstName) || !/^[A-Z][a-z'-]*(\s[A-Z][a-z'-]*)*$/.test(lastName)) {
+      showToast('Each word in the name must start with a capital letter, with the rest in lowercase.', 'error');
       return;
     }
-    if (middleInitial && !/^[A-Za-z]+$/.test(middleInitial)) {
-      showToast('Middle initial can only contain letters.', 'error');
+    if (middleInitial && !/^[A-Z][A-Za-z]*$/.test(middleInitial)) {
+      showToast('Middle initial can only contain letters and must start with a capital letter.', 'error');
       return;
     }
     if (extensionName && !/^[A-Za-z.\s]+$/.test(extensionName)) {

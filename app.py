@@ -178,6 +178,11 @@ class Payment(db.Model):
     method           = db.Column(db.String(32), nullable=False)
     reference_number = db.Column(db.String(60), nullable=True)
     proof_image_path = db.Column(db.String(255), nullable=True)
+    is_student            = db.Column(db.Boolean, nullable=False, default=False)
+    student_id_image_path = db.Column(db.String(255), nullable=True)
+    wants_coach           = db.Column(db.Boolean, nullable=False, default=False)
+    coach_name             = db.Column(db.String(60), nullable=True)
+    requested_start_date  = db.Column(db.Date, nullable=True)
     status           = db.Column(db.String(10), nullable=False, default='pending')
     recorded_by_id   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     notes            = db.Column(db.Text, nullable=True)
@@ -450,11 +455,11 @@ def register():
     if not first_name or not last_name or not email or not password:
         return jsonify(success=False, error='Please fill in all required fields.'), 400
 
-    if not _valid_name(first_name) or not _valid_name(last_name):
-        return jsonify(success=False, error='Names can only contain letters — no numbers.'), 400
+    if not _valid_name(first_name, require_capital=True, lowercase_rest=True) or not _valid_name(last_name, require_capital=True, lowercase_rest=True):
+        return jsonify(success=False, error='First and last name must start with a capital letter, with the rest in lowercase.'), 400
 
-    if not _valid_name(middle_initial, extra_chars=''):
-        return jsonify(success=False, error='Middle initial can only contain letters.'), 400
+    if not _valid_name(middle_initial, extra_chars='', require_capital=True):
+        return jsonify(success=False, error='Middle initial can only contain letters and must start with a capital letter.'), 400
 
     if not _valid_name(extension_name, extra_chars=' .'):
         return jsonify(success=False, error='Extension name can only contain letters.'), 400
@@ -504,11 +509,24 @@ def _valid_phone(phone):
     return phone.isdigit() and len(phone) == 11 and phone.startswith('09')
 
 
-def _valid_name(name, extra_chars=" '-"):
-    """Name fields must contain only letters (plus a few allowed punctuation chars) — no digits."""
+def _valid_name(name, extra_chars=" '-", require_capital=False, lowercase_rest=False):
+    """Name fields must contain only letters (plus a few allowed punctuation chars) — no digits.
+    When require_capital is True, the first character must also be an uppercase letter.
+    When lowercase_rest is True, each space-separated word must be in Title Case
+    (first letter capitalized, remaining letters in that word lowercase) — e.g. 'Dela Cruz'."""
     if not name:
         return True
-    return all(ch.isalpha() or ch in extra_chars for ch in name)
+    if not all(ch.isalpha() or ch in extra_chars for ch in name):
+        return False
+    if require_capital and not name[0].isupper():
+        return False
+    if lowercase_rest:
+        for word in name.split():
+            if not word[0].isupper():
+                return False
+            if any(ch.isalpha() and ch.isupper() for ch in word[1:]):
+                return False
+    return True
 
 
 @app.route('/admin/add-member', methods=['POST'])
@@ -729,7 +747,15 @@ def admin_verify_payment(payment_id):
         )
         db.session.add(membership)
 
-    base_date     = membership.expiry_date if membership.expiry_date and membership.expiry_date > today else today
+    # If the member requested a future start date and doesn't already have
+    # unexpired time on their account, honor that date instead of "today".
+    requested_start = payment.requested_start_date
+    if requested_start and (not membership.expiry_date or membership.expiry_date <= today):
+        base_date = requested_start if requested_start > today else today
+        membership.start_date = base_date
+    else:
+        base_date = membership.expiry_date if membership.expiry_date and membership.expiry_date > today else today
+
     duration_days = plan.duration_days if plan else 30
     membership.expiry_date = base_date + timedelta(days=duration_days)
     if plan is not None:
@@ -788,15 +814,27 @@ def member_submit_payment():
         return jsonify(success=False, error='Unauthorized.'), 403
 
     data = request.form
-    plan_key  = (data.get('plan')      or '').strip().lower()
-    method    = (data.get('method')    or '').strip()
-    reference = (data.get('reference') or '').strip()
+    plan_key    = (data.get('plan')        or '').strip().lower()
+    is_student  = (data.get('is_student')  or '').strip().lower() in ('1', 'true', 'yes')
+    wants_coach = (data.get('wants_coach') or '').strip().lower() in ('1', 'true', 'yes')
+    coach_name  = (data.get('coach_name')  or '').strip()
+    start_date_raw = (data.get('start_date') or '').strip()
+
+    today = _today_manila()
+    if not start_date_raw:
+        return jsonify(success=False, error='Please choose a start date for your plan.'), 400
+    try:
+        requested_start = date.fromisoformat(start_date_raw)
+    except ValueError:
+        return jsonify(success=False, error='Invalid start date.'), 400
+    if requested_start < today:
+        return jsonify(success=False, error='Start date cannot be in the past.'), 400
 
     plan_name_map = {
         'daily': 'Daily',
+        'weekly': 'Weekly',
         'monthly': 'Monthly',
-        'quarterly': 'Quarterly',
-        'annual': 'Annual',
+        'yearly': 'Yearly',
     }
     if plan_key not in plan_name_map:
         return jsonify(success=False, error='Please select a membership plan.'), 400
@@ -805,38 +843,48 @@ def member_submit_payment():
     if plan is None:
         return jsonify(success=False, error='Selected plan is not available.'), 400
 
-    if not method:
-        return jsonify(success=False, error='Please select a payment method.'), 400
+    valid_coaches = {'Ronel Samar', 'Jonathan Natividad'}
+    if wants_coach and coach_name not in valid_coaches:
+        return jsonify(success=False, error='Please select a coach.'), 400
+    if not wants_coach:
+        coach_name = None
 
-    # ── Proof of payment (required for GCash, optional for Cash) ──
-    proof_file = request.files.get('proof')
-    proof_relative_path = None
-    if method.lower() == 'gcash':
-        if not proof_file or not proof_file.filename:
-            return jsonify(success=False, error='Please upload your proof of payment.'), 400
+    # ── Student ID proof (required only if the member says they're a student) ──
+    student_id_relative_path = None
+    if is_student:
+        student_id_file = request.files.get('student_id')
+        if not student_id_file or not student_id_file.filename:
+            return jsonify(success=False, error='Please upload a photo of your school ID.'), 400
 
-        ext = proof_file.filename.rsplit('.', 1)[-1].lower() if '.' in proof_file.filename else ''
+        ext = student_id_file.filename.rsplit('.', 1)[-1].lower() if '.' in student_id_file.filename else ''
         if ext not in PROOF_ALLOWED_EXT:
-            return jsonify(success=False, error='Proof of payment must be a PNG, JPG, or PDF file.'), 400
+            return jsonify(success=False, error='School ID must be a PNG, JPG, or PDF file.'), 400
 
-        proof_file.seek(0, os.SEEK_END)
-        size = proof_file.tell()
-        proof_file.seek(0)
+        student_id_file.seek(0, os.SEEK_END)
+        size = student_id_file.tell()
+        student_id_file.seek(0)
         if size > PROOF_MAX_BYTES:
-            return jsonify(success=False, error='Proof of payment file is too large (max 10MB).'), 400
+            return jsonify(success=False, error='School ID file is too large (max 10MB).'), 400
 
-        safe_name = secure_filename(f"{secrets.token_hex(8)}_{proof_file.filename}")
-        proof_file.save(os.path.join(PROOF_UPLOAD_FOLDER, safe_name))
-        proof_relative_path = f"uploads/payment_proofs/{safe_name}"
+        safe_name = secure_filename(f"{secrets.token_hex(8)}_{student_id_file.filename}")
+        student_id_file.save(os.path.join(PROOF_UPLOAD_FOLDER, safe_name))
+        student_id_relative_path = f"uploads/payment_proofs/{safe_name}"
 
-    # ── Record the payment as pending — an admin/staff must verify it ──
+    # ── Record the plan request as pending — no payment details are collected
+    #    here. Staff/admin confirm the actual payment (cash or GCash) at the
+    #    front desk, then approve this record to activate the plan. ──
     new_payment = Payment(
         member_id=user.id,
         plan_id=plan.id,
         amount=plan.price,
-        method=method,
-        reference_number=reference or None,
-        proof_image_path=proof_relative_path,
+        method='Pending — to be confirmed by staff',
+        reference_number=None,
+        proof_image_path=None,
+        is_student=is_student,
+        student_id_image_path=student_id_relative_path,
+        wants_coach=wants_coach,
+        coach_name=coach_name,
+        requested_start_date=requested_start,
         status='pending',
     )
     db.session.add(new_payment)
@@ -844,25 +892,25 @@ def member_submit_payment():
     # ── Reflect the pending selection on the membership record so admin/staff
     #    can see what's awaiting verification. Don't touch an already-active
     #    membership — that stays active until the renewal is approved.
-    today = _today_manila()
     membership = Membership.query.filter_by(member_id=user.id).first()
     if membership is None:
         membership = Membership(
             member_id=user.id,
             plan_id=plan.id,
-            start_date=today,
-            expiry_date=today + timedelta(days=plan.duration_days),
+            start_date=requested_start,
+            expiry_date=requested_start + timedelta(days=plan.duration_days),
             status='pending',
         )
         db.session.add(membership)
     elif membership.status != 'active':
         membership.plan_id     = plan.id
-        membership.expiry_date = today + timedelta(days=plan.duration_days)
+        membership.start_date  = requested_start
+        membership.expiry_date = requested_start + timedelta(days=plan.duration_days)
         membership.status      = 'pending'
 
     db.session.commit()
 
-    return jsonify(success=True, message='Payment submitted! Awaiting admin verification.')
+    return jsonify(success=True, message=f'Plan requested to start {requested_start.strftime("%b %d, %Y")}! Settle payment with staff to activate it.')
 
 
 @app.route('/staff/record-payment', methods=['POST'])
@@ -1024,10 +1072,10 @@ def update_profile():
 
     if not first_name or not last_name or not email:
         return jsonify(success=False, error='First name, last name, and email are required.'), 400
-    if not _valid_name(first_name) or not _valid_name(last_name):
-        return jsonify(success=False, error='Names can only contain letters.'), 400
-    if middle_initial and not _valid_name(middle_initial, extra_chars=''):
-        return jsonify(success=False, error='Middle initial can only contain letters.'), 400
+    if not _valid_name(first_name, require_capital=True, lowercase_rest=True) or not _valid_name(last_name, require_capital=True, lowercase_rest=True):
+        return jsonify(success=False, error='Names must start with a capital letter, with the rest in lowercase.'), 400
+    if middle_initial and not _valid_name(middle_initial, extra_chars='', require_capital=True):
+        return jsonify(success=False, error='Middle initial can only contain letters and must start with a capital letter.'), 400
     if extension_name and not _valid_name(extension_name, extra_chars='. '):
         return jsonify(success=False, error='Extension name can only contain letters.'), 400
     if phone and not _valid_phone(phone):
@@ -1184,6 +1232,22 @@ def member():
         .first()
     )
 
+    # ── Payment history (this member's own submissions) ──
+    payment_rows = (
+        Payment.query
+        .filter_by(member_id=user.id)
+        .order_by(Payment.paid_at.desc())
+        .all()
+    )
+    payment_history = [{
+        'date':      _to_manila(p.paid_at).strftime('%b %d, %Y'),
+        'plan':      p.plan.name if p.plan else '—',
+        'amount':    f'{float(p.amount):,.2f}',
+        'method':    p.method,
+        'reference': p.reference_number or '—',
+        'status':    p.status,
+    } for p in payment_rows]
+
     # Members without a paid, active membership only get Overview + My
     # Membership — everything else (attendance history, goals, services) is
     # locked behind an active plan.
@@ -1200,6 +1264,7 @@ def member():
         session_history=session_history,
         attendance_rate=attendance_rate,
         goal=goal,
+        payment_history=payment_history,
     )
 
 
@@ -1427,6 +1492,10 @@ def admin():
         'reference': p.reference_number or '—',
         'amount': f'{float(p.amount):,.2f}',
         'proof_image_path': p.proof_image_path,
+        'is_student': p.is_student,
+        'student_id_image_path': p.student_id_image_path,
+        'wants_coach': p.wants_coach,
+        'coach_name': p.coach_name,
     } for p in pending_payments_rows]
 
     payment_history_rows = (
@@ -1444,6 +1513,9 @@ def admin():
         'amount': f'{float(p.amount):,.2f}',
         'date': p.paid_at.strftime('%b %d, %Y'),
         'status': p.status,
+        'is_student': p.is_student,
+        'wants_coach': p.wants_coach,
+        'coach_name': p.coach_name,
     } for p in payment_history_rows]
 
     return render_template(
@@ -1480,10 +1552,10 @@ def seed_default_users():
 
 def seed_default_plans():
     defaults = [
-        {'name': 'Daily',     'duration_days': 1,   'price': 80.0},
-        {'name': 'Monthly',   'duration_days': 30,  'price': 999.0},
-        {'name': 'Quarterly', 'duration_days': 90,  'price': 2499.0},
-        {'name': 'Annual',    'duration_days': 365, 'price': 7999.0},
+        {'name': 'Daily',   'duration_days': 1,   'price': 100.0},
+        {'name': 'Weekly',  'duration_days': 7,   'price': 450.0},
+        {'name': 'Monthly', 'duration_days': 30,  'price': 900.0},
+        {'name': 'Yearly',  'duration_days': 365, 'price': 7000.0},
     ]
     for p in defaults:
         if MembershipPlan.query.filter_by(name=p['name']).first() is None:

@@ -15,7 +15,7 @@
 const MemberModule = (() => {
 
   let selectedPlan    = null;
-  const LOCKED_TABS   = ['attendance', 'goals', 'services'];
+  const LOCKED_TABS   = [];
 
   function _planActive() {
     const root = document.getElementById('member-dashboard-root');
@@ -37,6 +37,7 @@ const MemberModule = (() => {
     buildAttGrid('att-grid-member', memberData.present_days || [], memberData.days_in_month || 30);
     _hydrateProgressBars();
     _bindModalBackdrops();
+    _initStartDateField();
 
     // Members without an active plan land on Overview (which points them to
     // My Membership); everything else stays locked until they pay.
@@ -62,6 +63,16 @@ const MemberModule = (() => {
     });
   }
 
+  /** Restrict the "when do you want to start?" picker to today or later,
+   *  and default it to today so most members can just leave it as-is. */
+  function _initStartDateField() {
+    const input = document.getElementById('member-renew-start');
+    if (!input) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    input.min   = todayStr;
+    input.value = todayStr;
+  }
+
   function tab(tabName, navEl) {
     if (LOCKED_TABS.includes(tabName) && !_planActive()) {
       showToast('Activate your membership first to unlock this.', 'error');
@@ -71,38 +82,80 @@ const MemberModule = (() => {
     Navigation.activateTab('member', tabName, navEl);
   }
 
-  /** Preview uploaded renewal proof image */
-  function previewRenewProof(input) {
+  /** Show/hide the school ID upload field based on the student Yes/No dropdown */
+  function toggleStudentIdField(select) {
+    const group = document.getElementById('member-student-id-group');
+    if (!group) return;
+    const isStudent = select?.value === 'yes';
+    group.style.display = isStudent ? 'block' : 'none';
+    if (!isStudent) {
+      const input   = document.getElementById('member-student-id');
+      const preview = document.getElementById('member-student-id-preview');
+      if (input) input.value = '';
+      if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+    }
+  }
+
+  /** Preview uploaded school ID image */
+  function previewStudentId(input) {
     const file    = input.files && input.files[0];
-    const preview = document.getElementById('member-renew-preview');
+    const preview = document.getElementById('member-student-id-preview');
     if (!preview) return;
     if (!file) { preview.style.display = 'none'; preview.removeAttribute('src'); return; }
     preview.src           = URL.createObjectURL(file);
     preview.style.display = 'block';
   }
 
-  /** Submit plan payment (new plan or renewal) to the backend for admin verification */
+  /** Show/hide the coach selection dropdown based on the coach Yes/No dropdown */
+  function toggleCoachField(select) {
+    const group = document.getElementById('member-coach-name-group');
+    if (!group) return;
+    const wantsCoach = select?.value === 'yes';
+    group.style.display = wantsCoach ? 'block' : 'none';
+    if (!wantsCoach) {
+      const coachSelect = document.getElementById('member-renew-coach-name');
+      if (coachSelect) coachSelect.value = '';
+    }
+  }
+
+  /** Submit a plan request (new plan or renewal) to the backend. No payment
+   *  details are collected here — staff/admin confirm payment separately
+   *  before approving. */
   function submitRenewalPayment() {
-    const methodEl = document.getElementById('member-renew-method');
-    const refEl    = document.getElementById('member-renew-ref');
-    const proofEl  = document.getElementById('member-renew-proof');
-    const file     = proofEl && proofEl.files && proofEl.files[0];
+    const startEl        = document.getElementById('member-renew-start');
+    const startDate      = startEl?.value || '';
+    const studentEl      = document.getElementById('member-renew-student');
+    const isStudent      = studentEl?.value === 'yes';
+    const studentIdEl    = document.getElementById('member-student-id');
+    const studentIdFile  = studentIdEl && studentIdEl.files && studentIdEl.files[0];
+    const coachToggleEl  = document.getElementById('member-renew-coach-toggle');
+    const wantsCoach     = coachToggleEl?.value === 'yes';
+    const coachNameEl    = document.getElementById('member-renew-coach-name');
+    const coachName      = coachNameEl?.value || '';
 
     if (!selectedPlan) { showToast('Please select a plan first', 'error'); return; }
-    if (!methodEl?.value) { showToast('Please choose a payment method', 'error'); return; }
-    if (methodEl.value === 'GCash' && (!refEl?.value.trim() || !file)) {
-      showToast('GCash payments need a reference number and screenshot proof', 'error');
+    if (!startDate) { showToast('Please choose a start date', 'error'); return; }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (startDate < todayStr) { showToast('Start date cannot be in the past', 'error'); return; }
+    if (isStudent && !studentIdFile) {
+      showToast('Please upload a photo of your school ID', 'error');
+      return;
+    }
+    if (wantsCoach && !coachName) {
+      showToast('Please choose a coach', 'error');
       return;
     }
 
     const formData = new FormData();
-    formData.append('plan',      selectedPlan);
-    formData.append('method',    methodEl.value);
-    formData.append('reference', refEl?.value.trim() || '');
-    if (file) formData.append('proof', file);
+    formData.append('plan',        selectedPlan);
+    formData.append('start_date',  startDate);
+    formData.append('is_student',  isStudent ? '1' : '0');
+    if (isStudent && studentIdFile) formData.append('student_id', studentIdFile);
+    formData.append('wants_coach', wantsCoach ? '1' : '0');
+    if (wantsCoach) formData.append('coach_name', coachName);
 
     const btn = document.querySelector('#member-membership .btn-red');
-    const originalLabel = btn ? btn.textContent : 'SUBMIT PAYMENT';
+    const originalLabel = btn ? btn.textContent : 'REQUEST THIS PLAN';
     if (btn) { btn.disabled = true; btn.textContent = 'SUBMITTING...'; }
 
     fetch('/member/submit-payment', { method: 'POST', body: formData })
@@ -110,17 +163,24 @@ const MemberModule = (() => {
       .then(({ ok, data }) => {
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         if (!ok || !data.success) {
-          showToast(data.error || 'Could not submit payment.', 'error');
+          showToast(data.error || 'Could not submit request.', 'error');
           return;
         }
 
-        methodEl.value = '';
-        if (refEl) refEl.value = '';
-        if (proofEl) proofEl.value = '';
-        const preview = document.getElementById('member-renew-preview');
-        if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+        if (studentEl) studentEl.value = 'no';
+        if (startEl) startEl.value = todayStr;
+        if (studentIdEl) studentIdEl.value = '';
+        const studentGroup = document.getElementById('member-student-id-group');
+        if (studentGroup) studentGroup.style.display = 'none';
+        const studentPreview = document.getElementById('member-student-id-preview');
+        if (studentPreview) { studentPreview.style.display = 'none'; studentPreview.removeAttribute('src'); }
 
-        showToast(data.message || 'Payment submitted! Awaiting admin verification.', 'success');
+        if (coachToggleEl) coachToggleEl.value = 'no';
+        if (coachNameEl) coachNameEl.value = '';
+        const coachGroup = document.getElementById('member-coach-name-group');
+        if (coachGroup) coachGroup.style.display = 'none';
+
+        showToast(data.message || 'Plan requested! Settle payment with staff to activate.', 'success');
         setTimeout(() => window.location.reload(), 1200);
       })
       .catch(() => {
@@ -135,9 +195,166 @@ const MemberModule = (() => {
     document.querySelectorAll('#member-membership .plan-card').forEach(c => c.classList.remove('selected'));
     card.classList.add('selected');
     showToast('Plan selected: ' + plan.charAt(0).toUpperCase() + plan.slice(1), 'success');
+    openPlanModal(plan);
   }
 
-  return { init, tab, previewRenewProof, submitRenewalPayment, selectRenewalPlan };
+  // ── Membership plans: "what's included" modal ──
+  const PLAN_INFO = {
+    daily: {
+      title: 'Daily',
+      price: '₱100',
+      subtitle: 'Single-day access — great for drop-ins',
+      items: [
+        'Full gym floor access for the day',
+        'Use of all cardio and strength equipment',
+        'Locker use during your visit',
+        'Access to Boxing, Strengthening, Weight Loss & Cardio Zone',
+        'No long-term commitment',
+      ],
+    },
+    weekly: {
+      title: 'Weekly',
+      price: '₱450',
+      subtitle: '7 days of full access — better value than paying daily',
+      items: [
+        'Everything in the Daily plan',
+        'Unlimited visits for 7 days',
+        'Attendance tracking in your dashboard',
+        'Access to Boxing, Strengthening, Weight Loss & Cardio Zone',
+        'Great for short-term visitors or a trial run',
+      ],
+    },
+    monthly: {
+      title: 'Monthly',
+      price: '₱900',
+      subtitle: 'Full access, billed once a month',
+      items: [
+        'Everything in the Weekly plan',
+        'Unlimited visits for 30 days',
+        'Attendance & Body Goals tracking in your dashboard',
+        'Eligible to request a coach (Ronel Samar or Jonathan Natividad)',
+        'Student discount available with a valid school ID',
+      ],
+    },
+    yearly: {
+      title: 'Yearly ⭐',
+      price: '₱7,000',
+      subtitle: 'Best value — a full year of unlimited access',
+      items: [
+        'Everything in the Monthly plan',
+        'Unlimited visits for 365 days',
+        '2 free personal coaching sessions',
+        'Members-only yearly gear kit',
+        'Price locked for the entire year — no rate increases',
+      ],
+    },
+  };
+
+  let planModalKey = null;
+
+  function openPlanModal(key) {
+    const info = PLAN_INFO[key];
+    if (!info) return;
+    planModalKey = key;
+
+    const title    = document.getElementById('plan-modal-title');
+    const price    = document.getElementById('plan-modal-price');
+    const subtitle = document.getElementById('plan-modal-subtitle');
+    const list     = document.getElementById('plan-modal-list');
+
+    if (title)    title.textContent = info.title.toUpperCase();
+    if (price)    price.textContent = info.price;
+    if (subtitle) subtitle.textContent = info.subtitle;
+    if (list)     list.innerHTML = info.items.map(i => `<li>${i}</li>`).join('');
+
+    openModal('plan-modal');
+  }
+
+  /** "SELECT THIS PLAN" button inside the inclusions modal */
+  function selectPlanFromModal() {
+    if (!planModalKey) return;
+    const card = document.querySelector(`#member-membership .plan-card[onclick*="'${planModalKey}'"]`);
+    selectedPlan = planModalKey;
+    document.querySelectorAll('#member-membership .plan-card').forEach(c => c.classList.remove('selected'));
+    if (card) card.classList.add('selected');
+    showToast('Plan selected: ' + planModalKey.charAt(0).toUpperCase() + planModalKey.slice(1), 'success');
+    closeModal('plan-modal');
+  }
+
+  // ── Services tab: "what's included" modal ──
+  const SERVICE_INFO = {
+    boxing: {
+      icon: '🥊',
+      title: 'Boxing',
+      subtitle: 'Gloves, punching bags, sparring',
+      items: [
+        'Free use of gloves, wraps, and focus mitts',
+        'Heavy bags and speed bags',
+        'Supervised sparring sessions',
+        'Beginner boxing technique coaching',
+        'Access during all regular gym hours',
+      ],
+    },
+    strengthening: {
+      icon: '💪',
+      title: 'Strengthening',
+      subtitle: 'Free weights, machines, resistance training',
+      items: [
+        'Full range of dumbbells and barbells',
+        'Squat rack, bench press, and cable machine',
+        'Resistance bands and kettlebells',
+        'Basic strength-training program guidance',
+        'Access during all regular gym hours',
+      ],
+    },
+    weightloss: {
+      icon: '🔥',
+      title: 'Weight Loss',
+      subtitle: 'Fat-burning circuits and programs',
+      items: [
+        'Guided fat-burning circuit workouts',
+        'HIIT-style group sessions',
+        'Progress tracking through Body Goals',
+        'General nutrition & meal-timing tips',
+        'Access during all regular gym hours',
+      ],
+    },
+    cardio: {
+      icon: '🚴',
+      title: 'Cardio Zone',
+      subtitle: 'Bikes, treadmills, rowing',
+      items: [
+        'Treadmills and exercise bikes',
+        'Rowing machines and ellipticals',
+        'Jump ropes for interval training',
+        'Heart-rate-friendly cardio programs',
+        'Access during all regular gym hours',
+      ],
+    },
+  };
+
+  function openServiceModal(key) {
+    const info = SERVICE_INFO[key];
+    if (!info) return;
+
+    const icon     = document.getElementById('service-modal-icon');
+    const title    = document.getElementById('service-modal-title');
+    const subtitle = document.getElementById('service-modal-subtitle');
+    const list     = document.getElementById('service-modal-list');
+
+    if (icon)     icon.textContent = info.icon;
+    if (title)    title.textContent = info.title.toUpperCase();
+    if (subtitle) subtitle.textContent = info.subtitle;
+    if (list)     list.innerHTML = info.items.map(i => `<li>${i}</li>`).join('');
+
+    openModal('service-modal');
+  }
+
+  return {
+    init, tab, submitRenewalPayment, selectRenewalPlan, openServiceModal,
+    toggleStudentIdField, previewStudentId, toggleCoachField,
+    openPlanModal, selectPlanFromModal
+  };
 })();
 
 
@@ -150,7 +367,12 @@ document.addEventListener('DOMContentLoaded', () => {
   MemberModule.init();
 
   window.memberTab            = (tab, el) => MemberModule.tab(tab, el);
-  window.previewRenewProof    = MemberModule.previewRenewProof;
+  window.openServiceModal     = MemberModule.openServiceModal;
   window.submitRenewalPayment = MemberModule.submitRenewalPayment;
   window.selectPlan           = MemberModule.selectRenewalPlan;
+  window.toggleStudentIdField = MemberModule.toggleStudentIdField;
+  window.previewStudentId     = MemberModule.previewStudentId;
+  window.toggleCoachField     = MemberModule.toggleCoachField;
+  window.openPlanModal        = MemberModule.openPlanModal;
+  window.selectPlanFromModal  = MemberModule.selectPlanFromModal;
 });
