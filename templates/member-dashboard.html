@@ -534,6 +534,23 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="confirm-plan-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="cancelPlanRequest()">✕</button>
+    <div class="modal-title" style="text-align:center;">CONFIRM YOUR REQUEST</div>
+    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
+      Are you sure you want to request the
+      <strong id="confirm-plan-name" style="color:var(--red);">MONTHLY</strong>
+      plan (<span id="confirm-plan-price">₱900</span>), starting
+      <strong id="confirm-plan-date">—</strong>?
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary btn-secondary-action" style="flex:1;" onclick="cancelPlanRequest()">NO, GO BACK</button>
+      <button class="btn btn-red" style="flex:1;" onclick="confirmPlanRequest()">YES, REQUEST IT</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 

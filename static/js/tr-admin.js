@@ -372,12 +372,28 @@ const AdminModule = (() => {
   }
 
   function _calculateExpiry(planName) {
-    const expiry = new Date();
+    const today  = new Date();
     const plan   = planName.toLowerCase();
-    if (plan === 'yearly')       expiry.setDate(expiry.getDate() + 365);
-    else if (plan === 'weekly')  expiry.setDate(expiry.getDate() + 7);
-    else if (plan === 'daily')   expiry.setDate(expiry.getDate() + 1);
-    else                          expiry.setDate(expiry.getDate() + 30);
+    if (plan === 'yearly') {
+      const expiry = new Date(today);
+      expiry.setDate(expiry.getDate() + 365);
+      return expiry;
+    }
+    if (plan === 'weekly') {
+      const expiry = new Date(today);
+      expiry.setDate(expiry.getDate() + 14);
+      return expiry;
+    }
+    if (plan === 'daily') {
+      const expiry = new Date(today);
+      expiry.setDate(expiry.getDate() + 1);
+      return expiry;
+    }
+    // Monthly: add one real calendar month (28-31 days), not a flat 30.
+    const day = today.getDate();
+    const expiry = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const lastDayOfTargetMonth = new Date(expiry.getFullYear(), expiry.getMonth() + 1, 0).getDate();
+    expiry.setDate(Math.min(day, lastDayOfTargetMonth));
     return expiry;
   }
 

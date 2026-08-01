@@ -7,6 +7,7 @@ load_dotenv()  # Reads variables from a .env file in the project root, if presen
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -38,6 +39,28 @@ def _today_manila():
     """Today's calendar date in Philippines time (so date boundaries — e.g.
     'today's attendance' — line up with the actual local day, not UTC's)."""
     return _now_manila().date()
+
+
+def _add_calendar_month(d, months=1):
+    """Add whole calendar month(s) to a date, landing on the same day-of-month
+    when possible (e.g. Jan 15 -> Feb 15) and clamping to the last valid day
+    when the target month is shorter (e.g. Jan 31 -> Feb 28/29, not Mar 3)."""
+    month_index = d.month - 1 + months
+    year  = d.year + month_index // 12
+    month = month_index % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    day = min(d.day, last_day)
+    return date(year, month, day)
+
+
+def _plan_expiry(plan, start_date):
+    """Compute a plan's expiry date from its start date. Monthly plans track
+    real calendar months (28-31 days) instead of a flat 30 days, so 'Feb 1 to
+    Mar 1' and 'Jan 1 to Feb 1' both count as one full month."""
+    if plan and plan.name == 'Monthly':
+        return _add_calendar_month(start_date, 1)
+    duration_days = plan.duration_days if plan else 30
+    return start_date + timedelta(days=duration_days)
 
 
 def _manila_day_bounds_utc(day):
@@ -575,7 +598,7 @@ def admin_add_member():
     db.session.flush()
 
     start = _today_manila()
-    expiry = start + timedelta(days=plan.duration_days)
+    expiry = _plan_expiry(plan, start)
     new_membership = Membership(
         member_id=new_user.id,
         plan_id=plan.id,
@@ -756,8 +779,7 @@ def admin_verify_payment(payment_id):
     else:
         base_date = membership.expiry_date if membership.expiry_date and membership.expiry_date > today else today
 
-    duration_days = plan.duration_days if plan else 30
-    membership.expiry_date = base_date + timedelta(days=duration_days)
+    membership.expiry_date = _plan_expiry(plan, base_date)
     if plan is not None:
         membership.plan_id = plan.id
     membership.status = 'active'
@@ -898,14 +920,14 @@ def member_submit_payment():
             member_id=user.id,
             plan_id=plan.id,
             start_date=requested_start,
-            expiry_date=requested_start + timedelta(days=plan.duration_days),
+            expiry_date=_plan_expiry(plan, requested_start),
             status='pending',
         )
         db.session.add(membership)
     elif membership.status != 'active':
         membership.plan_id     = plan.id
         membership.start_date  = requested_start
-        membership.expiry_date = requested_start + timedelta(days=plan.duration_days)
+        membership.expiry_date = _plan_expiry(plan, requested_start)
         membership.status      = 'pending'
 
     db.session.commit()
@@ -958,7 +980,7 @@ def staff_record_payment():
 
     base_date = membership.expiry_date if membership.expiry_date and membership.expiry_date > today else today
     membership.plan_id     = plan.id
-    membership.expiry_date = base_date + timedelta(days=plan.duration_days)
+    membership.expiry_date = _plan_expiry(plan, base_date)
     membership.status      = 'active'
     if member.status != 'active':
         member.status = 'active'
@@ -1167,7 +1189,7 @@ def member():
 
     current_plan = None
     if membership and plan_obj:
-        days_total = plan_obj.duration_days
+        days_total = max((membership.expiry_date - membership.start_date).days, 1)
         days_left  = max((membership.expiry_date - today).days, 0)
         days_used  = max(min(days_total - days_left, days_total), 0)
         percent_used = int((days_used / days_total) * 100) if days_total else 0
@@ -1553,23 +1575,47 @@ def seed_default_users():
 def seed_default_plans():
     defaults = [
         {'name': 'Daily',   'duration_days': 1,   'price': 100.0},
-        {'name': 'Weekly',  'duration_days': 7,   'price': 450.0},
+        {'name': 'Weekly',  'duration_days': 14,  'price': 450.0},
         {'name': 'Monthly', 'duration_days': 30,  'price': 900.0},
         {'name': 'Yearly',  'duration_days': 365, 'price': 7000.0},
     ]
     for p in defaults:
-        if MembershipPlan.query.filter_by(name=p['name']).first() is None:
+        existing = MembershipPlan.query.filter_by(name=p['name']).first()
+        if existing is None:
             db.session.add(MembershipPlan(
                 name=p['name'],
                 duration_days=p['duration_days'],
                 price=p['price'],
             ))
+        else:
+            # Keep an already-seeded row in sync if the defaults above change
+            # (e.g. Weekly's duration moving from 7 to 14 days).
+            existing.duration_days = p['duration_days']
+            existing.price         = p['price']
     db.session.commit()
+
+
+def _run_startup_migrations():
+    """db.create_all() only creates brand-new tables — it won't add columns
+    to a table that already exists from a previous run. This adds any
+    columns introduced after the database was first created, so existing
+    installs don't need a manual ALTER TABLE."""
+    migrations = [
+        ('payments', 'requested_start_date', "ALTER TABLE payments ADD COLUMN requested_start_date DATE NULL"),
+    ]
+    with db.engine.connect() as conn:
+        for table, column, ddl in migrations:
+            result = conn.execute(text(f"SHOW COLUMNS FROM {table} LIKE '{column}'"))
+            if result.fetchone() is None:
+                conn.execute(text(ddl))
+                conn.commit()
+                print(f"Migration: added {table}.{column}")
 
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        _run_startup_migrations()
         seed_default_plans()
         seed_default_users()
         print("Tables created, plans and demo users seeded!")

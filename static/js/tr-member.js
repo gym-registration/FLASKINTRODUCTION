@@ -118,9 +118,11 @@ const MemberModule = (() => {
     }
   }
 
-  /** Submit a plan request (new plan or renewal) to the backend. No payment
-   *  details are collected here — staff/admin confirm payment separately
-   *  before approving. */
+  let _pendingSubmission = null;
+
+  /** Validate the plan request, then ask for confirmation before actually
+   *  sending it — submitting activates a real payment request that staff
+   *  will act on, so we don't want an accidental click to fire it off. */
   function submitRenewalPayment() {
     const startEl        = document.getElementById('member-renew-start');
     const startDate      = startEl?.value || '';
@@ -145,6 +147,85 @@ const MemberModule = (() => {
       showToast('Please choose a coach', 'error');
       return;
     }
+
+    _pendingSubmission = {
+      startEl, startDate, todayStr, studentEl, isStudent, studentIdEl, studentIdFile,
+      coachToggleEl, wantsCoach, coachNameEl, coachName,
+    };
+    _openConfirmPlanModal();
+  }
+
+  const PLAN_DURATION_DAYS = { daily: 1, weekly: 14, yearly: 365 };
+
+  /** Add one calendar month, landing on the same day-of-month when possible
+   *  and clamping to the last valid day when the target month is shorter
+   *  (e.g. Jan 31 -> Feb 28/29, not Mar 3). Mirrors the backend's logic so
+   *  the preview here always matches what actually gets scheduled. */
+  function _addCalendarMonth(d) {
+    const day = d.getDate();
+    const result = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    const lastDayOfTargetMonth = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+    result.setDate(Math.min(day, lastDayOfTargetMonth));
+    return result;
+  }
+
+  /** Compute a plan's end date from its start date, given the plan key. */
+  function _planEndDate(planKey, start) {
+    if (planKey === 'monthly') return _addCalendarMonth(start);
+    const durationDays = PLAN_DURATION_DAYS[planKey] || 30;
+    const end = new Date(start);
+    end.setDate(end.getDate() + durationDays);
+    return end;
+  }
+
+  /** Fill in and open the "are you sure?" modal for the pending request. */
+  function _openConfirmPlanModal() {
+    const p = _pendingSubmission;
+    if (!p) return;
+
+    const info = PLAN_INFO[selectedPlan];
+    const nameEl  = document.getElementById('confirm-plan-name');
+    const priceEl = document.getElementById('confirm-plan-price');
+    const dateEl  = document.getElementById('confirm-plan-date');
+    const endEl   = document.getElementById('confirm-plan-end-date');
+
+    if (nameEl)  nameEl.textContent  = info ? info.title.toUpperCase() : selectedPlan.toUpperCase();
+    if (priceEl) priceEl.textContent = info ? info.price : '';
+
+    const start = new Date(p.startDate + 'T00:00:00');
+    if (dateEl) {
+      dateEl.textContent = start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+    if (endEl) {
+      const end = _planEndDate(selectedPlan, start);
+      endEl.textContent = end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+
+    openModal('confirm-plan-modal');
+  }
+
+  /** "Yes, request this plan" button inside the confirmation modal. */
+  function confirmPlanRequest() {
+    closeModal('confirm-plan-modal');
+    if (!_pendingSubmission) return;
+    _doSubmitRenewalPayment(_pendingSubmission);
+    _pendingSubmission = null;
+  }
+
+  /** "Cancel" button inside the confirmation modal — just discards it. */
+  function cancelPlanRequest() {
+    closeModal('confirm-plan-modal');
+    _pendingSubmission = null;
+  }
+
+  /** Actually send the plan request to the backend. No payment details are
+   *  collected here — staff/admin confirm payment separately before
+   *  approving. */
+  function _doSubmitRenewalPayment(p) {
+    const {
+      startEl, startDate, todayStr, studentEl, isStudent, studentIdEl, studentIdFile,
+      coachToggleEl, wantsCoach, coachNameEl, coachName,
+    } = p;
 
     const formData = new FormData();
     formData.append('plan',        selectedPlan);
@@ -203,9 +284,9 @@ const MemberModule = (() => {
     daily: {
       title: 'Daily',
       price: '₱100',
-      subtitle: 'Single-day access — great for drop-ins',
+      subtitle: 'Single-day access — up to 2 hours, great for drop-ins',
       items: [
-        'Full gym floor access for the day',
+        'Gym floor access for up to 2 hours on your visit day',
         'Use of all cardio and strength equipment',
         'Locker use during your visit',
         'Access to Boxing, Strengthening, Weight Loss & Cardio Zone',
@@ -215,10 +296,10 @@ const MemberModule = (() => {
     weekly: {
       title: 'Weekly',
       price: '₱450',
-      subtitle: '7 days of full access — better value than paying daily',
+      subtitle: '2 weeks of unlimited access, any time, every day',
       items: [
-        'Everything in the Daily plan',
-        'Unlimited visits for 7 days',
+        'Unlimited-length visits, any time, every day for 14 days',
+        'No 2-hour cap — stay as long as you like per visit',
         'Attendance tracking in your dashboard',
         'Access to Boxing, Strengthening, Weight Loss & Cardio Zone',
         'Great for short-term visitors or a trial run',
@@ -227,25 +308,25 @@ const MemberModule = (() => {
     monthly: {
       title: 'Monthly',
       price: '₱900',
-      subtitle: 'Full access, billed once a month',
+      subtitle: '1 month of unlimited access, any time, every day',
       items: [
-        'Everything in the Weekly plan',
-        'Unlimited visits for 30 days',
+        'Unlimited-length visits, any time, every day for 30 days',
         'Attendance & Body Goals tracking in your dashboard',
         'Eligible to request a coach (Ronel Samar or Jonathan Natividad)',
         'Student discount available with a valid school ID',
+        'Auto-renewal reminders before your plan expires',
       ],
     },
     yearly: {
       title: 'Yearly ⭐',
       price: '₱7,000',
-      subtitle: 'Best value — a full year of unlimited access',
+      subtitle: '1 year of unlimited access, any time, every day',
       items: [
-        'Everything in the Monthly plan',
-        'Unlimited visits for 365 days',
+        'Unlimited-length visits, any time, every day for 365 days',
         '2 free personal coaching sessions',
         'Members-only yearly gear kit',
         'Price locked for the entire year — no rate increases',
+        'Attendance & Body Goals tracking in your dashboard',
       ],
     },
   };
@@ -351,7 +432,8 @@ const MemberModule = (() => {
   }
 
   return {
-    init, tab, submitRenewalPayment, selectRenewalPlan, openServiceModal,
+    init, tab, submitRenewalPayment, confirmPlanRequest, cancelPlanRequest,
+    selectRenewalPlan, openServiceModal,
     toggleStudentIdField, previewStudentId, toggleCoachField,
     openPlanModal, selectPlanFromModal
   };
@@ -369,6 +451,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.memberTab            = (tab, el) => MemberModule.tab(tab, el);
   window.openServiceModal     = MemberModule.openServiceModal;
   window.submitRenewalPayment = MemberModule.submitRenewalPayment;
+  window.confirmPlanRequest   = MemberModule.confirmPlanRequest;
+  window.cancelPlanRequest    = MemberModule.cancelPlanRequest;
   window.selectPlan           = MemberModule.selectRenewalPlan;
   window.toggleStudentIdField = MemberModule.toggleStudentIdField;
   window.previewStudentId     = MemberModule.previewStudentId;
