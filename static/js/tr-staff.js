@@ -236,7 +236,33 @@ const StaffModule = (() => {
     if (emptyState) emptyState.style.display = (rows.length && visibleCount === 0) ? 'block' : 'none';
   }
 
-  return { init, tab, recordPayment, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable };
+  /** Show the uploaded payment proof (image or PDF) in a modal before approving/rejecting */
+  function viewPaymentProof(url, title) {
+    const img      = document.getElementById('proof-modal-img');
+    const pdfNote  = document.getElementById('proof-modal-pdf-note');
+    const pdfLink  = document.getElementById('proof-modal-pdf-link');
+    const titleEl  = document.getElementById('proof-modal-title');
+    if (!img || !pdfNote || !pdfLink) return;
+
+    if (titleEl) titleEl.textContent = (title || 'Payment Proof').toUpperCase();
+
+    const isPdf = /\.pdf($|\?)/i.test(url);
+
+    if (isPdf) {
+      img.style.display = 'none';
+      img.removeAttribute('src');
+      pdfLink.href = url;
+      pdfNote.style.display = 'block';
+    } else {
+      pdfNote.style.display = 'none';
+      img.src = url;
+      img.style.display = 'block';
+    }
+
+    openModal('view-proof-modal');
+  }
+
+  return { init, tab, recordPayment, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof };
 })();
 
 
@@ -255,4 +281,5 @@ document.addEventListener('DOMContentLoaded', () => {
   window.filterCheckinTable   = (term) => StaffModule.filterCheckinTable(term);
   window.filterMembersByStatus = (status, el) => StaffModule.filterMembersByStatus(status, el);
   window.filterMembersTable    = () => StaffModule.filterMembersTable();
+  window.viewPaymentProof      = (url, title) => StaffModule.viewPaymentProof(url, title);
 });

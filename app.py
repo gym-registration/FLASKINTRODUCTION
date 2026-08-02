@@ -731,7 +731,7 @@ def admin_delete_member(member_id):
 
 @app.route('/admin/verify-payment/<int:payment_id>', methods=['POST'])
 def admin_verify_payment(payment_id):
-    if session.get('role') != 'admin':
+    if session.get('role') not in ('admin', 'staff'):
         return jsonify(success=False, error='Unauthorized.'), 403
 
     data = request.get_json(silent=True) or request.form
@@ -893,8 +893,9 @@ def member_submit_payment():
         student_id_relative_path = f"uploads/payment_proofs/{safe_name}"
 
     # ── Record the plan request as pending — no payment details are collected
-    #    here. Staff/admin confirm the actual payment (cash or GCash) at the
-    #    front desk, then approve this record to activate the plan. ──
+    #    here. Payment method/reference/proof are submitted separately from
+    #    the Payment tab (see /member/submit-payment-method below), then
+    #    staff/admin verify and approve. ──
     new_payment = Payment(
         member_id=user.id,
         plan_id=plan.id,
@@ -932,7 +933,77 @@ def member_submit_payment():
 
     db.session.commit()
 
-    return jsonify(success=True, message=f'Plan requested to start {requested_start.strftime("%b %d, %Y")}! Settle payment with staff to activate it.')
+    return jsonify(success=True, message=f'Plan requested to start {requested_start.strftime("%b %d, %Y")}! Go to Payment to complete your payment.')
+
+
+@app.route('/member/submit-payment-method', methods=['POST'])
+def member_submit_payment_method():
+    """Called from the Payment tab: attaches the chosen payment method
+    (Cash or GCash) — plus reference number and proof screenshot for GCash —
+    to the member's current pending plan request."""
+    if session.get('role') != 'member':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    user = User.query.get(session.get('user_id'))
+    if user is None:
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    payment = (
+        Payment.query
+        .filter_by(member_id=user.id, status='pending')
+        .order_by(Payment.paid_at.desc())
+        .first()
+    )
+    if payment is None:
+        return jsonify(success=False, error='No pending plan request found. Please request a plan first.'), 400
+    if not payment.method.startswith('Pending'):
+        return jsonify(success=False, error='Payment already submitted for this request.'), 400
+
+    data = request.form
+    payment_method  = (data.get('payment_method')  or '').strip().lower()
+    gcash_reference = (data.get('gcash_reference') or '').strip()
+
+    if payment_method not in ('cash', 'gcash'):
+        return jsonify(success=False, error='Please select a payment method.'), 400
+
+    if payment_method == 'gcash':
+        if not gcash_reference:
+            return jsonify(success=False, error='Please enter your GCash reference number.'), 400
+
+        gcash_proof_file = request.files.get('gcash_proof')
+        if not gcash_proof_file or not gcash_proof_file.filename:
+            return jsonify(success=False, error='Please attach a screenshot of your GCash proof of payment.'), 400
+
+        ext = gcash_proof_file.filename.rsplit('.', 1)[-1].lower() if '.' in gcash_proof_file.filename else ''
+        if ext not in PROOF_ALLOWED_EXT:
+            return jsonify(success=False, error='Proof of payment must be a PNG, JPG, or PDF file.'), 400
+
+        gcash_proof_file.seek(0, os.SEEK_END)
+        size = gcash_proof_file.tell()
+        gcash_proof_file.seek(0)
+        if size > PROOF_MAX_BYTES:
+            return jsonify(success=False, error='Proof of payment file is too large (max 10MB).'), 400
+
+        safe_name = secure_filename(f"{secrets.token_hex(8)}_{gcash_proof_file.filename}")
+        gcash_proof_file.save(os.path.join(PROOF_UPLOAD_FOLDER, safe_name))
+        proof_relative_path = f"uploads/payment_proofs/{safe_name}"
+
+        payment.method            = 'GCash'
+        payment.reference_number  = gcash_reference
+        payment.proof_image_path  = proof_relative_path
+    else:
+        payment.method            = 'Cash — to be confirmed by staff'
+        payment.reference_number  = None
+        payment.proof_image_path  = None
+
+    db.session.commit()
+
+    if payment_method == 'gcash':
+        message = 'GCash payment submitted! Awaiting verification by staff or admin.'
+    else:
+        message = 'Got it — please settle your Cash payment at the front desk with staff.'
+
+    return jsonify(success=True, message=message)
 
 
 @app.route('/staff/record-payment', methods=['POST'])
@@ -1270,6 +1341,24 @@ def member():
         'status':    p.status,
     } for p in payment_rows]
 
+    # ── Pending payment (drives the "Submit Payment" panel on the Payment tab) ──
+    pending_payment_row = (
+        Payment.query
+        .filter_by(member_id=user.id, status='pending')
+        .order_by(Payment.paid_at.desc())
+        .first()
+    )
+    pending_payment = None
+    if pending_payment_row is not None:
+        pending_payment = {
+            'plan_name':   pending_payment_row.plan.name if pending_payment_row.plan else '—',
+            'amount':      f'{float(pending_payment_row.amount):,.2f}',
+            'start_date':  pending_payment_row.requested_start_date.strftime('%b %d, %Y') if pending_payment_row.requested_start_date else '—',
+            'needs_method': pending_payment_row.method.startswith('Pending'),
+            'method':      pending_payment_row.method,
+            'reference':   pending_payment_row.reference_number,
+        }
+
     # Members without a paid, active membership only get Overview + My
     # Membership — everything else (attendance history, goals, services) is
     # locked behind an active plan.
@@ -1287,6 +1376,7 @@ def member():
         attendance_rate=attendance_rate,
         goal=goal,
         payment_history=payment_history,
+        pending_payment=pending_payment,
     )
 
 
@@ -1418,17 +1508,73 @@ def staff():
     attendance_today = _get_attendance_today()
 
     members = _get_members_with_plans()
-    active_members   = [m for m in members if m['status'] == 'Active']
-    pending_payments = [m for m in members if m['status'] == 'Pending']
+    active_members       = [m for m in members if m['status'] == 'Active']
+    pending_status_members = [m for m in members if m['status'] == 'Pending']
     expiring_soon    = [
         m for m in members
         if m['status'] == 'Active' and m['expiry_date'] and 0 <= (m['expiry_date'] - today).days <= 7
     ]
 
+    # ── Pending membership/payment requests (Request tab) ──
+    pending_requests_rows = (
+        Payment.query
+        .filter_by(status='pending')
+        .order_by(Payment.paid_at.desc())
+        .all()
+    )
+    pending_requests = [{
+        'id': p.id,
+        'txn': f'TXN-{9000 + p.id}',
+        'member_name': p.member.full_name,
+        'plan': p.plan.name if p.plan else '—',
+        'method': p.method,
+        'reference': p.reference_number or '—',
+        'amount': f'{float(p.amount):,.2f}',
+        'proof_image_path': p.proof_image_path,
+        'is_student': p.is_student,
+        'student_id_image_path': p.student_id_image_path,
+        'wants_coach': p.wants_coach,
+        'coach_name': p.coach_name,
+    } for p in pending_requests_rows]
+
+    # ── Recently processed requests (approved/rejected), for reference ──
+    processed_requests_rows = (
+        Payment.query
+        .filter(Payment.status.in_(['verified', 'rejected']))
+        .order_by(Payment.paid_at.desc())
+        .limit(20)
+        .all()
+    )
+    processed_requests = [{
+        'txn': f'TXN-{9000 + p.id}',
+        'member_name': p.member.full_name,
+        'plan': p.plan.name if p.plan else '—',
+        'method': p.method,
+        'amount': f'{float(p.amount):,.2f}',
+        'date': p.paid_at.strftime('%b %d, %Y'),
+        'status': p.status,
+    } for p in processed_requests_rows]
+
+    # ── Coach assignments (Coach tab) — every payment where a coach was
+    #    requested, newest first ──
+    coach_rows = (
+        Payment.query
+        .filter(Payment.wants_coach.is_(True))
+        .order_by(Payment.paid_at.desc())
+        .all()
+    )
+    coach_assignments = [{
+        'member_name': p.member.full_name,
+        'coach_name': p.coach_name or '—',
+        'plan': p.plan.name if p.plan else '—',
+        'status': p.status,
+        'date': p.paid_at.strftime('%b %d, %Y'),
+    } for p in coach_rows]
+
     stats = {
         'checkins_today':   len(attendance_today),
         'active_members':   len(active_members),
-        'pending_payments': len(pending_payments),
+        'pending_payments': len(pending_requests),
         'expiring_soon':    len(expiring_soon),
     }
 
@@ -1439,6 +1585,9 @@ def staff():
         members_checkin=_get_members_checkin_status(),
         expiring_soon=expiring_soon,
         stats=stats,
+        pending_requests=pending_requests,
+        processed_requests=processed_requests,
+        coach_assignments=coach_assignments,
         current_user=User.query.get(session['user_id']),
     )
 

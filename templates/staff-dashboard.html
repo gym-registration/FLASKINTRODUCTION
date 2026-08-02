@@ -34,20 +34,23 @@
       <div class="nav-item" id="nav-staff-overview" onclick="staffTab('overview',this)">
         <span class="nav-icon">📊</span> Overview
       </div>
+      <div class="nav-item" id="nav-staff-request" onclick="staffTab('request',this)">
+        <span class="nav-icon">📝</span> Request
+      </div>
+      <div class="nav-item" id="nav-staff-coach" onclick="staffTab('coach',this)">
+        <span class="nav-icon">🏋</span> Coach
+      </div>
+      <div class="nav-item" id="nav-staff-payments" onclick="staffTab('payments',this)">
+        <span class="nav-icon">💳</span> Payment Record
+      </div>
       <div class="nav-item" id="nav-staff-checkin" onclick="staffTab('checkin',this)">
         <span class="nav-icon">✅</span> Check-in / Out
       </div>
       <div class="nav-item" id="nav-staff-members" onclick="staffTab('members',this)">
         <span class="nav-icon">👥</span> View Members
       </div>
-      <div class="nav-item" id="nav-staff-payments" onclick="staffTab('payments',this)">
-        <span class="nav-icon">💳</span> Record Payment
-      </div>
       <div class="nav-item" id="nav-staff-notices" onclick="staffTab('notices',this)">
         <span class="nav-icon">📢</span> Notices
-      </div>
-      <div class="nav-item" id="nav-staff-settings" onclick="staffTab('settings',this)">
-        <span class="nav-icon">⚙️</span> Settings
       </div>
     </nav>
 
@@ -59,7 +62,7 @@
           <div class="user-email" id="sidebar-user-email">{{ current_user.email if current_user else 'staff@powergym.com' }}</div>
         </div>
       </div>
-      <button class="btn-change-pass" onclick="staffTab('settings', document.getElementById('nav-staff-settings'))">⚙️ SETTINGS</button>
+      <button class="btn-change-pass" onclick="staffTab('settings', this)">⚙️ SETTINGS</button>
       <button class="btn-logout" onclick="doLogout()">⏻ SIGN OUT</button>
     </div>
   </div><!-- /sidebar -->
@@ -145,6 +148,102 @@
         </table>
       </div>
     </div><!-- /staff-overview -->
+
+    <!-- ── Request (membership plan requests) ───────────────── -->
+    <div id="staff-request" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">MEMBERSHIP REQUESTS</div><div class="page-subtitle">Verify and approve member plan requests</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Pending Requests</div></div>
+        <div class="panel-body">
+          {% for p in pending_requests %}
+          <div class="verify-card" data-payment-id="{{ p.id }}" style="margin-bottom:12px;">
+            <div>
+              <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
+              <div style="font-size:12px;color:var(--muted);">{{ p.method }} · Ref: {{ p.reference }} · Txn: #{{ p.txn }} · ₱{{ p.amount }}</div>
+              <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="badge badge-blue">Pending</span>
+                {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
+                {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              {% if p.proof_image_path %}
+              <button class="btn btn-sm btn-outline" data-proof-url="{{ url_for('static', filename=p.proof_image_path) }}" onclick="viewPaymentProof(this.dataset.proofUrl, 'Payment Proof')">👁 View Proof</button>
+              {% else %}
+              <span class="badge badge-muted" style="align-self:center;">Payment not yet confirmed</span>
+              {% endif %}
+              {% if p.is_student and p.student_id_image_path %}
+              <button class="btn btn-sm btn-outline" data-id-url="{{ url_for('static', filename=p.student_id_image_path) }}" onclick="viewPaymentProof(this.dataset.idUrl, 'School ID Proof')">🎓 View School ID</button>
+              {% endif %}
+              <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Approve</button>
+              <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
+            </div>
+          </div>
+          {% else %}
+          <div style="text-align:center;color:var(--muted);padding:12px 0;">No pending requests to verify.</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Recently Processed</div></div>
+        <table class="data-table">
+          <thead><tr><th>Txn#</th><th>Member</th><th>Plan</th><th>Method</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for p in processed_requests %}
+            <tr>
+              <td>#{{ p.txn }}</td>
+              <td>{{ p.member_name }}</td>
+              <td>{{ p.plan }}</td><td>{{ p.method }}</td><td>₱{{ p.amount }}</td><td>{{ p.date }}</td>
+              <td>
+                {% if p.status == 'verified' %}
+                <span class="badge badge-green">Approved</span>
+                {% else %}
+                <span class="badge badge-red">Rejected</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;color:var(--muted);">No requests processed yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /staff-request -->
+
+    <!-- ── Coach ───────────────── -->
+    <div id="staff-coach" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">COACH ASSIGNMENTS</div><div class="page-subtitle">Members who requested a personal coach</div></div>
+      </div>
+      <div class="panel">
+        <table class="data-table">
+          <thead><tr><th>Member</th><th>Coach</th><th>Plan</th><th>Requested</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for c in coach_assignments %}
+            <tr>
+              <td>{{ c.member_name }}</td>
+              <td>{{ c.coach_name }}</td>
+              <td>{{ c.plan }}</td>
+              <td>{{ c.date }}</td>
+              <td>
+                {% if c.status == 'verified' %}
+                <span class="badge badge-green">Active</span>
+                {% elif c.status == 'rejected' %}
+                <span class="badge badge-red">Rejected</span>
+                {% else %}
+                <span class="badge badge-blue">Pending</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" style="text-align:center;color:var(--muted);">No coach requests yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div><!-- /staff-coach -->
 
     <!-- ── Check-in / Out ───────────────── -->
     <div id="staff-checkin" class="sub-panel">
@@ -234,7 +333,7 @@
 
     <!-- ── Record Payment ───────────────── -->
     <div id="staff-payments" class="sub-panel">
-      <div class="page-header"><div><div class="page-title">RECORD PAYMENT</div><div class="page-subtitle">Log cash payments at the front desk</div></div></div>
+      <div class="page-header"><div><div class="page-title">PAYMENT RECORD</div><div class="page-subtitle">Log cash payments at the front desk</div></div></div>
       <div class="panel">
         <div class="panel-header"><div class="panel-title">New Payment Entry</div></div>
         <div class="panel-body">
@@ -381,6 +480,23 @@
 
   </div><!-- /main-content -->
 </div><!-- /staff-dashboard-root -->
+
+<!-- ═══════════════════════════════════════
+     MODALS
+═══════════════════════════════════════ -->
+<div class="modal-overlay" id="view-proof-modal">
+  <div class="modal" style="max-width:520px;text-align:center;">
+    <button class="modal-close" onclick="closeModal('view-proof-modal')">✕</button>
+    <div class="modal-title" id="proof-modal-title">PAYMENT PROOF</div>
+    <div id="proof-modal-body">
+      <img id="proof-modal-img" src="" alt="Payment proof" style="display:none;max-width:100%;max-height:60vh;border-radius:6px;border:1px solid var(--border);">
+      <div id="proof-modal-pdf-note" style="display:none;">
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">This proof was uploaded as a PDF file.</p>
+        <a id="proof-modal-pdf-link" href="#" target="_blank" class="btn btn-red" style="display:inline-block;">OPEN PDF</a>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>

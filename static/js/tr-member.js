@@ -118,6 +118,81 @@ const MemberModule = (() => {
     }
   }
 
+  /** Show/hide the GCash reference + proof-of-payment fields based on the
+   *  payment method dropdown (Payment tab). */
+  function togglePaymentProofField(select) {
+    const group = document.getElementById('payment-gcash-fields');
+    if (!group) return;
+    const isGcash = select?.value === 'gcash';
+    group.style.display = isGcash ? 'block' : 'none';
+    if (!isGcash) {
+      const refEl     = document.getElementById('payment-gcash-reference');
+      const proofEl   = document.getElementById('payment-gcash-proof');
+      const previewEl = document.getElementById('payment-gcash-proof-preview');
+      if (refEl) refEl.value = '';
+      if (proofEl) proofEl.value = '';
+      if (previewEl) { previewEl.style.display = 'none'; previewEl.removeAttribute('src'); }
+    }
+  }
+
+  /** Preview the uploaded GCash proof-of-payment screenshot (Payment tab) */
+  function previewGcashProof(input) {
+    const file    = input.files && input.files[0];
+    const preview = document.getElementById('payment-gcash-proof-preview');
+    if (!preview) return;
+    if (!file) { preview.style.display = 'none'; preview.removeAttribute('src'); return; }
+    preview.src           = URL.createObjectURL(file);
+    preview.style.display = 'block';
+  }
+
+  /** Validate and submit the chosen payment method (Cash/GCash) for the
+   *  member's current pending plan request, from the Payment tab. */
+  function submitPaymentMethod() {
+    const methodEl       = document.getElementById('payment-method-select');
+    const paymentMethod  = methodEl?.value || 'cash';
+    const isGcash        = paymentMethod === 'gcash';
+    const gcashRefEl     = document.getElementById('payment-gcash-reference');
+    const gcashRef       = (gcashRefEl?.value || '').trim();
+    const gcashProofEl   = document.getElementById('payment-gcash-proof');
+    const gcashProofFile = gcashProofEl && gcashProofEl.files && gcashProofEl.files[0];
+
+    if (isGcash && !gcashRef) {
+      showToast('Please enter your GCash reference number', 'error');
+      return;
+    }
+    if (isGcash && !gcashProofFile) {
+      showToast('Please attach a screenshot of your GCash proof of payment', 'error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('payment_method', paymentMethod);
+    if (isGcash) {
+      formData.append('gcash_reference', gcashRef);
+      if (gcashProofFile) formData.append('gcash_proof', gcashProofFile);
+    }
+
+    const btn = document.querySelector('#payment-submit-panel .btn-red');
+    const originalLabel = btn ? btn.textContent : 'SUBMIT PAYMENT';
+    if (btn) { btn.disabled = true; btn.textContent = 'SUBMITTING...'; }
+
+    fetch('/member/submit-payment-method', { method: 'POST', body: formData })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        if (!ok || !data.success) {
+          showToast(data.error || 'Could not submit payment.', 'error');
+          return;
+        }
+        showToast(data.message || 'Payment submitted! Awaiting verification.', 'success');
+        setTimeout(() => window.location.reload(), 1200);
+      })
+      .catch(() => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        showToast('Could not reach the server. Please try again.', 'error');
+      });
+  }
+
   let _pendingSubmission = null;
 
   /** Validate the plan request, then ask for confirmation before actually
@@ -261,7 +336,7 @@ const MemberModule = (() => {
         const coachGroup = document.getElementById('member-coach-name-group');
         if (coachGroup) coachGroup.style.display = 'none';
 
-        showToast(data.message || 'Plan requested! Settle payment with staff to activate.', 'success');
+        showToast(data.message || 'Plan requested! Go to Payment to complete your payment.', 'success');
         setTimeout(() => window.location.reload(), 1200);
       })
       .catch(() => {
@@ -435,6 +510,7 @@ const MemberModule = (() => {
     init, tab, submitRenewalPayment, confirmPlanRequest, cancelPlanRequest,
     selectRenewalPlan, openServiceModal,
     toggleStudentIdField, previewStudentId, toggleCoachField,
+    togglePaymentProofField, previewGcashProof, submitPaymentMethod,
     openPlanModal, selectPlanFromModal
   };
 })();
@@ -457,6 +533,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.toggleStudentIdField = MemberModule.toggleStudentIdField;
   window.previewStudentId     = MemberModule.previewStudentId;
   window.toggleCoachField     = MemberModule.toggleCoachField;
+  window.togglePaymentProofField = MemberModule.togglePaymentProofField;
+  window.previewGcashProof       = MemberModule.previewGcashProof;
+  window.submitPaymentMethod     = MemberModule.submitPaymentMethod;
   window.openPlanModal        = MemberModule.openPlanModal;
   window.selectPlanFromModal  = MemberModule.selectPlanFromModal;
 });

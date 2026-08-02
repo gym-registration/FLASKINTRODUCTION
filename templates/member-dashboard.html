@@ -202,11 +202,12 @@
                 </select>
               </div>
               <div style="font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:4px;line-height:1.6;">
-                Submitting sends this plan as a request. Please settle payment (GCash or Cash) at
-                the front desk with staff — your plan activates once staff or admin confirms payment.
+                Submitting sends this plan as a request. Once submitted, go to the
+                <strong>Payment</strong> tab to choose Cash or GCash and complete payment —
+                your plan activates once staff or admin confirms it.
               </div>
               <button class="btn btn-red" style="margin-top:16px;width:100%;" onclick="submitRenewalPayment()">
-                {% if plan %}REQUEST RENEWAL{% else %}REQUEST THIS PLAN{% endif %}
+                REQUEST MEMBERSHIP PLAN
               </button>
             </div>
           </div>
@@ -232,11 +233,68 @@
       </div>
     </div><!-- /member-membership -->
 
-    <!-- ── Payment History ───────────────── -->
+    <!-- ── Payment ───────────────── -->
     <div id="member-payment" class="sub-panel">
-      <div class="page-header"><div><div class="page-title">PAYMENT HISTORY</div><div class="page-subtitle">Your submitted payments and their verification status</div></div></div>
+      <div class="page-header"><div><div class="page-title">PAYMENT</div><div class="page-subtitle">Complete payment for your membership plan and view your payment records</div></div></div>
+
+      {% if pending_payment %}
+      <div class="panel" id="payment-submit-panel">
+        <div class="panel-header"><div class="panel-title">Submit Payment</div></div>
+        <div class="panel-body">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;">
+            <div>
+              <div style="font-family:'Bebas Neue';font-size:28px;color:var(--red);">{{ pending_payment.plan_name|upper }} PLAN</div>
+              <div style="font-size:12px;color:var(--muted);">Requested start: {{ pending_payment.start_date }}</div>
+            </div>
+            <div style="font-family:'Bebas Neue';font-size:32px;color:var(--white);">₱{{ pending_payment.amount }}</div>
+          </div>
+
+          {% if pending_payment.needs_method %}
+          <div class="proof-upload-box">
+            <div class="form-group">
+              <label class="form-label">Payment Method</label>
+              <select class="form-input" id="payment-method-select" onchange="togglePaymentProofField(this)">
+                <option value="cash">Cash — pay at the front desk</option>
+                <option value="gcash">GCash</option>
+              </select>
+            </div>
+            <div class="form-group" id="payment-gcash-fields" style="display:none;">
+              <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
+                <div style="font-size:11px;color:var(--muted);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">Send GCash payment to</div>
+                <div style="font-family:'Bebas Neue';font-size:24px;color:var(--white);letter-spacing:1px;">0945 397 0594</div>
+                <div style="font-size:13px;color:var(--muted);margin-top:2px;">LYDIA M. EMATA</div>
+              </div>
+              <label class="form-label">GCash Reference Number</label>
+              <input class="form-input" id="payment-gcash-reference" placeholder="e.g. 1234567890123">
+              <label class="form-label" style="margin-top:14px;">Proof of Payment (screenshot)</label>
+              <input class="form-input" type="file" id="payment-gcash-proof" accept="image/*"
+                     onchange="previewGcashProof(this)">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                Upload a screenshot of your GCash payment confirmation. Staff or admin will verify it
+                before your plan is approved.
+              </div>
+              <img id="payment-gcash-proof-preview" class="proof-preview" alt="GCash proof preview" style="display:none;">
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:4px;line-height:1.6;">
+              If paying by Cash, settle payment at the front desk with staff. If paying by GCash,
+              attach your reference number and proof of payment above.
+            </div>
+            <button class="btn btn-red" style="margin-top:16px;width:100%;" onclick="submitPaymentMethod()">
+              SUBMIT PAYMENT
+            </button>
+          </div>
+          {% else %}
+          <div style="font-size:13px;color:var(--muted);line-height:1.6;">
+            Payment method: <strong style="color:var(--white);">{{ pending_payment.method }}</strong>{% if pending_payment.reference %} · Reference: <strong style="color:var(--white);">{{ pending_payment.reference }}</strong>{% endif %}
+            <br>Your payment is submitted and awaiting verification by staff or admin.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
       <div class="panel">
-        <div class="panel-header"><div class="panel-title">All Payments</div></div>
+        <div class="panel-header"><div class="panel-title">Past Payments</div></div>
         <table class="data-table">
           <thead><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Method</th><th>Reference</th><th>Status</th></tr></thead>
           <tbody>
