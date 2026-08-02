@@ -1044,6 +1044,23 @@ select.form-input option:focus {
   .equip-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* Equipment grouped by service category (Services tab) */
+.equip-category { margin-bottom: 22px; }
+.equip-category:last-child { margin-bottom: 0; }
+.equip-category-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 12px;
+}
+.equip-category-title .equip-category-icon { font-size: 16px; }
+
 /* Square service cards (Services tab) */
 .service-card { aspect-ratio: 1 / 1; display: flex; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
 .service-card:hover { border-color: var(--red); transform: translateY(-2px); }
