@@ -479,11 +479,14 @@ const MemberModule = (() => {
       title: 'Boxing',
       subtitle: 'Gloves, punching bags, sparring',
       items: [
-        'Free use of gloves, wraps, and focus mitts',
-        'Heavy bags and speed bags',
-        'Supervised sparring sessions',
-        'Beginner boxing technique coaching',
-        'Access during all regular gym hours',
+        'Access to boxing area',
+        ' Boxing gloves (rental or bring your own)',
+        ' Hand wraps (optional purchase)',
+        ' Punching bags & speed bags',
+        ' Group boxing classes or personal coaching',
+        ' Sparring sessions (for advanced members)',
+        ' Locker room access',
+        ' Showers and changing rooms'
       ],
     },
     strengthening: {
@@ -491,11 +494,12 @@ const MemberModule = (() => {
       title: 'Strengthening',
       subtitle: 'Free weights, machines, resistance training',
       items: [
-        'Full range of dumbbells and barbells',
-        'Squat rack, bench press, and cable machine',
-        'Resistance bands and kettlebells',
-        'Basic strength-training program guidance',
-        'Access during all regular gym hours',
+        ' Access to all strength equipment',
+        ' Free weights (dumbbells & barbells)',
+        ' Resistance machines',
+        ' Bench press & squat racks',
+        ' Locker room access',
+        ' Showers and changing rooms'
       ],
     },
     weightloss: {
@@ -503,11 +507,13 @@ const MemberModule = (() => {
       title: 'Weight Loss',
       subtitle: 'Fat-burning circuits and programs',
       items: [
-        'Guided fat-burning circuit workouts',
-        'HIIT-style group sessions',
-        'Progress tracking through Body Goals',
-        'General nutrition & meal-timing tips',
-        'Access during all regular gym hours',
+        ' Cardio equipment access',
+        ' Fat-burning workout programs',
+        ' Circuit training sessions',
+        ' Functional training equipment',
+        ' Body composition assessment',
+        ' Locker room access',
+        ' Showers and changing rooms'
       ],
     },
     cardio: {
@@ -515,11 +521,12 @@ const MemberModule = (() => {
       title: 'Cardio Zone',
       subtitle: 'Bikes, treadmills, rowing',
       items: [
-        'Treadmills and exercise bikes',
-        'Rowing machines and ellipticals',
-        'Jump ropes for interval training',
-        'Heart-rate-friendly cardio programs',
-        'Access during all regular gym hours',
+        ' Unlimited use of cardio machines',
+        ' Treadmills, bikes, ellipticals, rowers',
+        ' Heart rate monitoring (if available)',
+        ' Warm-up & cool-down area',
+        ' Locker room access',
+        ' Showers and changing rooms'
       ],
     },
   };
