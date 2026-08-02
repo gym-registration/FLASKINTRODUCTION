@@ -38,10 +38,33 @@ const MemberModule = (() => {
     _hydrateProgressBars();
     _bindModalBackdrops();
     _initStartDateField();
+    _showApprovalNoticeIfAny(memberData.plan_approved_notice);
 
     // Members without an active plan land on Overview (which points them to
     // My Membership); everything else stays locked until they pay.
     Navigation.activateTab('member', 'overview', document.getElementById('nav-member-overview'));
+  }
+
+  /** Show the one-time "Congratulations! Your plan was approved" popup, if
+   *  the server flagged this page load as the first one since approval. */
+  function _showApprovalNoticeIfAny(notice) {
+    if (!notice) return;
+    const msgEl = document.getElementById('plan-approved-message');
+    if (msgEl) {
+      msgEl.textContent = `Congratulations! Your ${notice.plan_name} plan has been approved. Please proceed to payment.`;
+    }
+    openModal('plan-approved-modal');
+  }
+
+  /** "✕" or "Later" on the approval popup — just dismiss it. */
+  function closePlanApprovedModal() {
+    closeModal('plan-approved-modal');
+  }
+
+  /** "Proceed to Payment" on the approval popup — jump straight to the Payment tab. */
+  function goToPaymentFromApproval() {
+    closeModal('plan-approved-modal');
+    Navigation.activateTab('member', 'payment', document.getElementById('nav-member-payment'));
   }
 
   function _parseMemberDashboardData() {
@@ -336,13 +359,25 @@ const MemberModule = (() => {
         const coachGroup = document.getElementById('member-coach-name-group');
         if (coachGroup) coachGroup.style.display = 'none';
 
-        showToast(data.message || 'Plan requested! Go to Payment to complete your payment.', 'success');
-        setTimeout(() => window.location.reload(), 1200);
+        _showPlanSuccessModal(data.message || 'Plan requested! Please wait for staff approval before proceeding to payment.');
       })
       .catch(() => {
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         showToast('Could not reach the server. Please try again.', 'error');
       });
+  }
+
+  /** Show the "request successful" popup; reloads the page once it's dismissed. */
+  function _showPlanSuccessModal(message) {
+    const msgEl = document.getElementById('plan-success-message');
+    if (msgEl) msgEl.textContent = message;
+    openModal('plan-success-modal');
+  }
+
+  /** "OK" button (or ✕) on the success popup — closes it and refreshes the dashboard. */
+  function closePlanSuccessModal() {
+    closeModal('plan-success-modal');
+    window.location.reload();
   }
 
   /** Expose plan selection for the renewal grid */
@@ -508,6 +543,7 @@ const MemberModule = (() => {
 
   return {
     init, tab, submitRenewalPayment, confirmPlanRequest, cancelPlanRequest,
+    closePlanSuccessModal, closePlanApprovedModal, goToPaymentFromApproval,
     selectRenewalPlan, openServiceModal,
     toggleStudentIdField, previewStudentId, toggleCoachField,
     togglePaymentProofField, previewGcashProof, submitPaymentMethod,
@@ -529,6 +565,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.submitRenewalPayment = MemberModule.submitRenewalPayment;
   window.confirmPlanRequest   = MemberModule.confirmPlanRequest;
   window.cancelPlanRequest    = MemberModule.cancelPlanRequest;
+  window.closePlanSuccessModal = MemberModule.closePlanSuccessModal;
+  window.closePlanApprovedModal = MemberModule.closePlanApprovedModal;
+  window.goToPaymentFromApproval = MemberModule.goToPaymentFromApproval;
   window.selectPlan           = MemberModule.selectRenewalPlan;
   window.toggleStudentIdField = MemberModule.toggleStudentIdField;
   window.previewStudentId     = MemberModule.previewStudentId;

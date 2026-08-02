@@ -211,6 +211,7 @@ class Payment(db.Model):
     notes            = db.Column(db.Text, nullable=True)
     paid_at          = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     verified_at      = db.Column(db.DateTime, nullable=True)
+    notified         = db.Column(db.Boolean, nullable=False, default=False)
 
     member      = db.relationship('User', foreign_keys=[member_id], back_populates='payments')
     plan        = db.relationship('MembershipPlan', back_populates='payments')
@@ -835,6 +836,19 @@ def member_submit_payment():
     if user is None:
         return jsonify(success=False, error='Unauthorized.'), 403
 
+    today = _today_manila()
+
+    existing_membership = Membership.query.filter_by(member_id=user.id).first()
+    if (existing_membership and existing_membership.status == 'active'
+            and existing_membership.expiry_date and existing_membership.expiry_date >= today):
+        plan_name = existing_membership.plan.name if existing_membership.plan else 'a plan'
+        return jsonify(
+            success=False,
+            error=f'You are currently registered to the {plan_name} plan (active until '
+                  f'{existing_membership.expiry_date.strftime("%b %d, %Y")}). '
+                  f'You can request a new plan once it expires.'
+        ), 409
+
     data = request.form
     plan_key    = (data.get('plan')        or '').strip().lower()
     is_student  = (data.get('is_student')  or '').strip().lower() in ('1', 'true', 'yes')
@@ -842,7 +856,6 @@ def member_submit_payment():
     coach_name  = (data.get('coach_name')  or '').strip()
     start_date_raw = (data.get('start_date') or '').strip()
 
-    today = _today_manila()
     if not start_date_raw:
         return jsonify(success=False, error='Please choose a start date for your plan.'), 400
     try:
@@ -933,7 +946,7 @@ def member_submit_payment():
 
     db.session.commit()
 
-    return jsonify(success=True, message=f'Plan requested to start {requested_start.strftime("%b %d, %Y")}! Go to Payment to complete your payment.')
+    return jsonify(success=True, message=f'Plan requested to start {requested_start.strftime("%b %d, %Y")}. Please wait for staff approval before proceeding to payment.')
 
 
 @app.route('/member/submit-payment-method', methods=['POST'])
@@ -1359,6 +1372,21 @@ def member():
             'reference':   pending_payment_row.reference_number,
         }
 
+    # ── Just-approved notice (shown once as a "Congratulations!" popup) ──
+    just_approved_row = (
+        Payment.query
+        .filter_by(member_id=user.id, status='verified', notified=False)
+        .order_by(Payment.verified_at.desc())
+        .first()
+    )
+    plan_approved_notice = None
+    if just_approved_row is not None:
+        plan_approved_notice = {
+            'plan_name': just_approved_row.plan.name if just_approved_row.plan else 'membership',
+        }
+        just_approved_row.notified = True
+        db.session.commit()
+
     # Members without a paid, active membership only get Overview + My
     # Membership — everything else (attendance history, goals, services) is
     # locked behind an active plan.
@@ -1377,6 +1405,7 @@ def member():
         goal=goal,
         payment_history=payment_history,
         pending_payment=pending_payment,
+        plan_approved_notice=plan_approved_notice,
     )
 
 
@@ -1751,6 +1780,7 @@ def _run_startup_migrations():
     installs don't need a manual ALTER TABLE."""
     migrations = [
         ('payments', 'requested_start_date', "ALTER TABLE payments ADD COLUMN requested_start_date DATE NULL"),
+        ('payments', 'notified', "ALTER TABLE payments ADD COLUMN notified TINYINT(1) NOT NULL DEFAULT 0"),
     ]
     with db.engine.connect() as conn:
         for table, column, ddl in migrations:

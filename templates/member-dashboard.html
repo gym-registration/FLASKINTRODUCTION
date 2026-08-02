@@ -142,6 +142,15 @@
         <div class="panel">
           <div class="panel-header"><div class="panel-title">{% if plan %}Upgrade / Renew{% else %}Choose a Plan{% endif %}</div></div>
           <div class="panel-body">
+            {% if plan_active %}
+            <div class="gate-banner">
+              <span class="gate-banner-icon">✅</span>
+              <div>
+                <div class="gate-banner-title">You're currently registered to the {{ plan.name }} plan</div>
+                <div class="gate-banner-text">It's active until {{ plan.expiry_date }}. You can request a new or upgraded plan once this one expires.</div>
+              </div>
+            </div>
+            {% else %}
             <div class="plan-grid">
               <div class="plan-card" onclick="selectPlan(this,'daily')">
                 <div class="plan-name">Daily</div><div class="plan-price">₱100</div>
@@ -210,6 +219,7 @@
                 REQUEST MEMBERSHIP PLAN
               </button>
             </div>
+            {% endif %}
           </div>
         </div>
 
@@ -602,9 +612,44 @@
       plan (<span id="confirm-plan-price">₱900</span>), starting
       <strong id="confirm-plan-date">—</strong>?
     </div>
-    <div style="display:flex;gap:10px;">
-      <button class="btn btn-primary btn-secondary-action" style="flex:1;" onclick="cancelPlanRequest()">NO, GO BACK</button>
-      <button class="btn btn-red" style="flex:1;" onclick="confirmPlanRequest()">YES, REQUEST IT</button>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="cancelPlanRequest()">NO, GO BACK</button>
+      <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="confirmPlanRequest()">YES, REQUEST IT</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="plan-success-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closePlanSuccessModal()">✕</button>
+    <div style="display:flex;justify-content:center;margin-bottom:14px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);display:flex;align-items:center;justify-content:center;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+    <div class="modal-title" style="text-align:center;">REQUEST SUCCESSFUL</div>
+    <div id="plan-success-message" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 22px;">
+      You successfully requested your plan.
+    </div>
+    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closePlanSuccessModal()">OK</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="plan-approved-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closePlanApprovedModal()">✕</button>
+    <div style="display:flex;justify-content:center;margin-bottom:14px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);display:flex;align-items:center;justify-content:center;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+    <div class="modal-title" style="text-align:center;">MEMBERSHIP APPROVED!</div>
+    <div id="plan-approved-message" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 22px;">
+      Congratulations! Your membership plan has been approved. Please proceed to payment.
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="closePlanApprovedModal()">LATER</button>
+      <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="goToPaymentFromApproval()">PROCEED TO PAYMENT</button>
     </div>
   </div>
 </div>
@@ -612,7 +657,7 @@
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script id="member-dashboard-data" type="application/json">{{ {'present_days': present_days, 'days_in_month': days_in_month}|tojson }}</script>
+<script id="member-dashboard-data" type="application/json">{{ {'present_days': present_days, 'days_in_month': days_in_month, 'plan_approved_notice': plan_approved_notice}|tojson }}</script>
 <script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tr-member.js') }}"></script>
 </body>
