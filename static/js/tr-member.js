@@ -39,6 +39,7 @@ const MemberModule = (() => {
     _bindModalBackdrops();
     _initStartDateField();
     _showApprovalNoticeIfAny(memberData.plan_approved_notice);
+    _showPaymentApprovedNoticeIfAny(memberData.payment_verified_notice);
 
     // Members without an active plan land on Overview (which points them to
     // My Membership); everything else stays locked until they pay.
@@ -65,6 +66,22 @@ const MemberModule = (() => {
   function goToPaymentFromApproval() {
     closeModal('plan-approved-modal');
     Navigation.activateTab('member', 'payment', document.getElementById('nav-member-payment'));
+  }
+
+  /** Show the one-time "Congratulations! Your payment was approved" popup,
+   *  including the date the (now-active) membership starts from. */
+  function _showPaymentApprovedNoticeIfAny(notice) {
+    if (!notice) return;
+    const msgEl = document.getElementById('payment-approved-message');
+    if (msgEl) {
+      msgEl.textContent = `Congratulations! Your payment for the ${notice.plan_name} plan has been approved. Your membership starts on ${notice.start_date}.`;
+    }
+    openModal('payment-approved-modal');
+  }
+
+  /** "✕" or "OK" on the payment-approved popup — just dismiss it. */
+  function closePaymentApprovedModal() {
+    closeModal('payment-approved-modal');
   }
 
   function _parseMemberDashboardData() {
@@ -551,6 +568,7 @@ const MemberModule = (() => {
   return {
     init, tab, submitRenewalPayment, confirmPlanRequest, cancelPlanRequest,
     closePlanSuccessModal, closePlanApprovedModal, goToPaymentFromApproval,
+    closePaymentApprovedModal,
     selectRenewalPlan, openServiceModal,
     toggleStudentIdField, previewStudentId, toggleCoachField,
     togglePaymentProofField, previewGcashProof, submitPaymentMethod,
@@ -574,6 +592,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.cancelPlanRequest    = MemberModule.cancelPlanRequest;
   window.closePlanSuccessModal = MemberModule.closePlanSuccessModal;
   window.closePlanApprovedModal = MemberModule.closePlanApprovedModal;
+  window.closePaymentApprovedModal = MemberModule.closePaymentApprovedModal;
   window.goToPaymentFromApproval = MemberModule.goToPaymentFromApproval;
   window.selectPlan           = MemberModule.selectRenewalPlan;
   window.toggleStudentIdField = MemberModule.toggleStudentIdField;

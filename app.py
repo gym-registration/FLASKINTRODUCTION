@@ -743,8 +743,53 @@ def admin_verify_payment(payment_id):
     payment = Payment.query.get(payment_id)
     if payment is None:
         return jsonify(success=False, error='Payment not found.'), 404
-    if payment.status != 'pending':
-        return jsonify(success=False, error='This payment has already been processed.'), 409
+    if payment.status not in ('pending', 'approved'):
+        # Someone else already finished processing this exact request (e.g. two
+        # staff/admin tabs had the same card open). Tell the client to just drop
+        # the stale card instead of showing a scary error toast. ──
+        return jsonify(success=False, error='This request was already processed by someone else.',
+                        stale=True), 409
+
+    # ── Stage 1: the plan request itself is awaiting approval — no payment
+    #    method has been chosen yet. This is staff's call: approving here
+    #    just greenlights the plan so the member can proceed to pay; it does
+    #    NOT activate the membership yet. Admin doesn't act at this stage. ──
+    if payment.status == 'pending':
+        if session.get('role') != 'staff':
+            return jsonify(success=False, error='Plan requests are approved by staff, not admin.'), 403
+
+        if action == 'reject':
+            payment.status = 'rejected'
+            payment.verified_at = datetime.now(timezone.utc)
+            db.session.commit()
+            return jsonify(success=True, message='Plan request rejected.', status='rejected')
+
+        payment.status = 'approved'
+        payment.method = 'Pending — choose payment method'
+        payment.notified = False
+        db.session.commit()
+        return jsonify(success=True, message='Plan approved — the member can now submit payment.', status='approved')
+
+    # ── Stage 2: the plan was already approved by staff; this verifies the
+    #    payment the member has since submitted (Cash or GCash). This is
+    #    admin's call — staff doesn't verify payments. ──
+    if session.get('role') == 'staff':
+        # From staff's point of view this card is just stale — the plan they
+        # were about to approve/reject was already approved (by them or a
+        # colleague) and has since moved on to the payment stage, which is
+        # entirely admin's job. This is not something staff did wrong, so
+        # don't show it as an error — just tell the client to drop the card.
+        return jsonify(
+            success=False,
+            error='This plan was already approved and is now awaiting the member\'s payment — no further action needed here.',
+            stale=True,
+        ), 409
+    # session.get('role') can only be 'admin' or 'staff' at this point (checked
+    # at the top of the route) — staff is handled above, so we're admin here.
+    if payment.method.startswith('Pending'):
+        return jsonify(success=False, error='This member has not chosen a payment method yet. Ask them to complete payment on their Payment tab before verifying.'), 400
+    if action == 'approve' and payment.method == 'GCash' and not payment.proof_image_path:
+        return jsonify(success=False, error='No GCash proof of payment was uploaded for this request.'), 400
 
     if action == 'reject':
         payment.status = 'rejected'
@@ -755,6 +800,7 @@ def admin_verify_payment(payment_id):
     # ── Approve: activate/extend membership (same logic as staff_record_payment) ──
     payment.status = 'verified'
     payment.verified_at = datetime.now(timezone.utc)
+    payment.notified = False  # let the member see a fresh "payment approved!" popup
 
     member = payment.member
     plan   = payment.plan
@@ -849,6 +895,16 @@ def member_submit_payment():
                   f'You can request a new plan once it expires.'
         ), 409
 
+    existing_request = (
+        Payment.query
+        .filter(Payment.member_id == user.id, Payment.status.in_(['pending', 'approved']))
+        .first()
+    )
+    if existing_request is not None:
+        if existing_request.status == 'pending':
+            return jsonify(success=False, error='You already have a plan request awaiting staff approval.'), 409
+        return jsonify(success=False, error='Your plan has already been approved — head to the Payment tab to complete payment.'), 409
+
     data = request.form
     plan_key    = (data.get('plan')        or '').strip().lower()
     is_student  = (data.get('is_student')  or '').strip().lower() in ('1', 'true', 'yes')
@@ -913,7 +969,7 @@ def member_submit_payment():
         member_id=user.id,
         plan_id=plan.id,
         amount=plan.price,
-        method='Pending — to be confirmed by staff',
+        method='Pending — awaiting staff approval',
         reference_number=None,
         proof_image_path=None,
         is_student=is_student,
@@ -963,12 +1019,12 @@ def member_submit_payment_method():
 
     payment = (
         Payment.query
-        .filter_by(member_id=user.id, status='pending')
+        .filter_by(member_id=user.id, status='approved')
         .order_by(Payment.paid_at.desc())
         .first()
     )
     if payment is None:
-        return jsonify(success=False, error='No pending plan request found. Please request a plan first.'), 400
+        return jsonify(success=False, error='No approved plan found. Please wait for staff to approve your plan request before paying.'), 400
     if not payment.method.startswith('Pending'):
         return jsonify(success=False, error='Payment already submitted for this request.'), 400
 
@@ -1012,7 +1068,7 @@ def member_submit_payment_method():
     db.session.commit()
 
     if payment_method == 'gcash':
-        message = 'GCash payment submitted! Awaiting verification by staff or admin.'
+        message = 'GCash payment submitted! Awaiting verification by admin.'
     else:
         message = 'Got it — please settle your Cash payment at the front desk with staff.'
 
@@ -1354,10 +1410,27 @@ def member():
         'status':    p.status,
     } for p in payment_rows]
 
-    # ── Pending payment (drives the "Submit Payment" panel on the Payment tab) ──
-    pending_payment_row = (
+    # ── Awaiting approval (plan request submitted, staff/admin hasn't
+    #    reviewed it yet — no payment can be made until it's approved) ──
+    awaiting_approval_row = (
         Payment.query
         .filter_by(member_id=user.id, status='pending')
+        .order_by(Payment.paid_at.desc())
+        .first()
+    )
+    awaiting_approval = None
+    if awaiting_approval_row is not None:
+        awaiting_approval = {
+            'plan_name':  awaiting_approval_row.plan.name if awaiting_approval_row.plan else '—',
+            'amount':     f'{float(awaiting_approval_row.amount):,.2f}',
+            'start_date': awaiting_approval_row.requested_start_date.strftime('%b %d, %Y') if awaiting_approval_row.requested_start_date else '—',
+        }
+
+    # ── Pending payment (plan already approved by staff/admin — drives the
+    #    "Submit Payment" panel on the Payment tab) ──
+    pending_payment_row = (
+        Payment.query
+        .filter_by(member_id=user.id, status='approved')
         .order_by(Payment.paid_at.desc())
         .first()
     )
@@ -1372,11 +1445,13 @@ def member():
             'reference':   pending_payment_row.reference_number,
         }
 
-    # ── Just-approved notice (shown once as a "Congratulations!" popup) ──
+    # ── Just-approved notice (shown once as a "Congratulations! Proceed to
+    #    payment" popup) — fires when staff/admin approves the PLAN, which
+    #    is the point at which the member is actually allowed to pay. ──
     just_approved_row = (
         Payment.query
-        .filter_by(member_id=user.id, status='verified', notified=False)
-        .order_by(Payment.verified_at.desc())
+        .filter_by(member_id=user.id, status='approved', notified=False)
+        .order_by(Payment.paid_at.desc())
         .first()
     )
     plan_approved_notice = None
@@ -1385,6 +1460,32 @@ def member():
             'plan_name': just_approved_row.plan.name if just_approved_row.plan else 'membership',
         }
         just_approved_row.notified = True
+        db.session.commit()
+
+    # ── Just-verified notice (shown once as a "Congratulations! Payment
+    #    approved" popup with the membership start date) — fires when admin
+    #    approves the actual PAYMENT (Cash/GCash, or a front-desk payment
+    #    recorded directly by staff), which is the point the membership
+    #    actually activates. ──
+    just_verified_row = (
+        Payment.query
+        .filter_by(member_id=user.id, status='verified', notified=False)
+        .order_by(Payment.paid_at.desc())
+        .first()
+    )
+    payment_verified_notice = None
+    if just_verified_row is not None:
+        start_date_text = (
+            membership.start_date.strftime('%B %d, %Y')
+            if membership and membership.start_date
+            else (just_verified_row.requested_start_date.strftime('%B %d, %Y')
+                  if just_verified_row.requested_start_date else today.strftime('%B %d, %Y'))
+        )
+        payment_verified_notice = {
+            'plan_name':  just_verified_row.plan.name if just_verified_row.plan else 'membership',
+            'start_date': start_date_text,
+        }
+        just_verified_row.notified = True
         db.session.commit()
 
     # Members without a paid, active membership only get Overview + My
@@ -1404,8 +1505,10 @@ def member():
         attendance_rate=attendance_rate,
         goal=goal,
         payment_history=payment_history,
+        awaiting_approval=awaiting_approval,
         pending_payment=pending_payment,
         plan_approved_notice=plan_approved_notice,
+        payment_verified_notice=payment_verified_notice,
     )
 
 
@@ -1544,7 +1647,9 @@ def staff():
         if m['status'] == 'Active' and m['expiry_date'] and 0 <= (m['expiry_date'] - today).days <= 7
     ]
 
-    # ── Pending membership/payment requests (Request tab) ──
+    # ── Pending plan requests (Request tab) — staff approves the plan
+    #    itself before any payment is involved. Payment verification (Cash
+    #    or GCash) happens later, entirely on the Admin side. ──
     pending_requests_rows = (
         Payment.query
         .filter_by(status='pending')
@@ -1565,6 +1670,7 @@ def staff():
         'wants_coach': p.wants_coach,
         'coach_name': p.coach_name,
     } for p in pending_requests_rows]
+
 
     # ── Recently processed requests (approved/rejected), for reference ──
     processed_requests_rows = (
@@ -1677,9 +1783,12 @@ def admin():
     attendance_today = _get_attendance_today()
     attendance_calendar = _get_attendance_calendar()
 
+    # Two stages share this list: 'approval' (plan awaiting admin sign-off,
+    # no payment yet) and 'verify' (member has since paid and it's awaiting
+    # confirmation, e.g. GCash proof review).
     pending_payments_rows = (
         Payment.query
-        .filter_by(status='pending')
+        .filter(Payment.status.in_(['pending', 'approved']))
         .order_by(Payment.paid_at.desc())
         .all()
     )
@@ -1696,6 +1805,11 @@ def admin():
         'student_id_image_path': p.student_id_image_path,
         'wants_coach': p.wants_coach,
         'coach_name': p.coach_name,
+        'stage': (
+            'approval' if p.status == 'pending'
+            else 'awaiting_payment' if p.method.startswith('Pending')
+            else 'verify'
+        ),
     } for p in pending_payments_rows]
 
     payment_history_rows = (

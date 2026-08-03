@@ -99,9 +99,17 @@
             <div class="verify-card" data-payment-id="{{ p.id }}">
               <div>
                 <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
-                <div style="font-size:12px;color:var(--muted);">{{ p.method }} · Ref: {{ p.reference }} · Txn: #{{ p.txn }} · ₱{{ p.amount }}</div>
+                <div style="font-size:12px;color:var(--muted);">
+                  {% if p.stage == 'approval' %}New plan request{% else %}{{ p.method }} · Ref: {{ p.reference }}{% endif %} · Txn: #{{ p.txn }} · ₱{{ p.amount }}
+                </div>
                 <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-                  <span class="badge badge-blue">Pending</span>
+                  {% if p.stage == 'approval' %}
+                  <span class="badge badge-blue">Awaiting Plan Approval</span>
+                  {% elif p.stage == 'awaiting_payment' %}
+                  <span class="badge badge-gold">Approved — Awaiting Payment</span>
+                  {% else %}
+                  <span class="badge badge-blue">Awaiting Payment Verification</span>
+                  {% endif %}
                   {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
                   {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
                 </div>
@@ -110,8 +118,14 @@
                 {% if p.is_student and p.student_id_image_path %}
                 <button class="btn btn-sm btn-outline" data-id-url="{{ url_for('static', filename=p.student_id_image_path) }}" onclick="viewPaymentProof(this.dataset.idUrl)">🎓 View School ID</button>
                 {% endif %}
-                <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Approve</button>
+                {% if p.stage == 'approval' %}
+                <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting staff approval</span>
+                {% elif p.stage == 'awaiting_payment' %}
+                <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting payment from member</span>
+                {% else %}
+                <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Confirm Payment</button>
                 <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
+                {% endif %}
               </div>
             </div>
             {% else %}
@@ -183,9 +197,17 @@
           <div class="verify-card" data-payment-id="{{ p.id }}" style="margin-bottom:12px;">
             <div>
               <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
-              <div style="font-size:12px;color:var(--muted);">{{ p.method }} · Ref: {{ p.reference }} · Txn: #{{ p.txn }} · ₱{{ p.amount }}</div>
+              <div style="font-size:12px;color:var(--muted);">
+                {% if p.stage == 'approval' %}New plan request{% else %}{{ p.method }} · Ref: {{ p.reference }}{% endif %} · Txn: #{{ p.txn }} · ₱{{ p.amount }}
+              </div>
               <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-                <span class="badge badge-blue">Pending</span>
+                {% if p.stage == 'approval' %}
+                <span class="badge badge-blue">Awaiting Plan Approval</span>
+                {% elif p.stage == 'awaiting_payment' %}
+                <span class="badge badge-gold">Approved — Awaiting Payment</span>
+                {% else %}
+                <span class="badge badge-blue">Awaiting Payment Verification</span>
+                {% endif %}
                 {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
                 {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
               </div>
@@ -193,14 +215,18 @@
             <div style="display:flex;gap:8px;">
               {% if p.proof_image_path %}
               <button class="btn btn-sm btn-outline" data-proof-url="{{ url_for('static', filename=p.proof_image_path) }}" onclick="viewPaymentProof(this.dataset.proofUrl)">👁 View Proof</button>
-              {% else %}
-              <span class="badge badge-muted" style="align-self:center;">Payment not yet confirmed</span>
               {% endif %}
               {% if p.is_student and p.student_id_image_path %}
               <button class="btn btn-sm btn-outline" data-id-url="{{ url_for('static', filename=p.student_id_image_path) }}" onclick="viewPaymentProof(this.dataset.idUrl)">🎓 View School ID</button>
               {% endif %}
-              <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Approve</button>
+              {% if p.stage == 'approval' %}
+              <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting staff approval</span>
+              {% elif p.stage == 'awaiting_payment' %}
+              <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting payment from member</span>
+              {% else %}
+              <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Confirm Payment</button>
               <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
+              {% endif %}
             </div>
           </div>
           {% else %}

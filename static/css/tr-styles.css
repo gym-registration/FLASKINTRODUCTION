@@ -891,6 +891,7 @@ select.form-input option:focus {
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 .toast.error { border-left-color: var(--red); }
+.toast.info  { border-left-color: var(--blue); }
 
 /* ══════════════════════════════════
    9. Attendance Grid

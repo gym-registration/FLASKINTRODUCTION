@@ -269,6 +269,16 @@ function verifyPayment(btn, action) {
     .then(res => res.json().then(data => ({ ok: res.ok, data })))
     .then(({ ok, data }) => {
       if (!ok || !data.success) {
+        if (data.stale) {
+          // This card is out of date (already handled by someone else, or
+          // already moved on to the next stage) — just remove it quietly
+          // rather than leaving disabled buttons and a scary red toast.
+          showToast(data.error || 'This request has already moved on.', 'info');
+          card.style.transition = 'opacity 0.25s ease';
+          card.style.opacity = '0';
+          setTimeout(() => card.remove(), 250);
+          return;
+        }
         showToast(data.error || 'Failed to process payment.', 'error');
         buttons.forEach(b => b.disabled = false);
         return;
@@ -279,6 +289,9 @@ function verifyPayment(btn, action) {
         if (data.status === 'verified') {
           badge.className   = 'badge badge-green';
           badge.textContent = 'Approved ✓';
+        } else if (data.status === 'approved') {
+          badge.className   = 'badge badge-gold';
+          badge.textContent = 'Plan Approved — Awaiting Payment';
         } else {
           badge.className   = 'badge badge-red';
           badge.textContent = 'Rejected ✗';
@@ -455,8 +468,8 @@ function showToast(msg, type = 'success') {
   const container = document.getElementById('toast-container');
   if (!container) return;
   const toast       = document.createElement('div');
-  toast.className   = 'toast' + (type === 'error' ? ' error' : '');
-  toast.innerHTML   = (type === 'success' ? '✓ ' : '✗ ') + msg;
+  toast.className   = 'toast' + (type === 'error' ? ' error' : type === 'info' ? ' info' : '');
+  toast.innerHTML   = (type === 'success' ? '✓ ' : type === 'info' ? 'ℹ ' : '✗ ') + msg;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3100);
 }
