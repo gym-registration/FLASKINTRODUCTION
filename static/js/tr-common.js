@@ -218,13 +218,20 @@ const Navigation = (() => {
 
 /** Build an attendance dot grid. totalDays defaults to 30 if not given
  *  (kept for backward compatibility with pages that don't pass it yet). */
-function buildAttGrid(elId, presentDays, totalDays = 30) {
+function buildAttGrid(elId, presentDays, totalDays = 30, todayDay = null) {
   const el = document.getElementById(elId);
   if (!el) return;
   el.innerHTML = '';
   for (let d = 1; d <= totalDays; d++) {
     const dot = document.createElement('div');
-    dot.className  = 'att-dot ' + (presentDays.includes(d) ? 'present' : 'absent');
+    // A day that hasn't happened yet is neither "present" nor "absent" —
+    // it just hasn't occurred, so it gets its own neutral state instead of
+    // being lumped in with real absences (which would understate the
+    // member's actual attendance rate for the month so far).
+    let state;
+    if (todayDay && d > todayDay) state = 'upcoming';
+    else state = presentDays.includes(d) ? 'present' : 'absent';
+    dot.className  = 'att-dot ' + state;
     dot.textContent = d;
     el.appendChild(dot);
   }

@@ -43,8 +43,8 @@ const AdminModule = (() => {
 
     // Build attendance grids from real gym-wide data
     const calendarData = _parseAdminDashboardData();
-    buildAttGrid('att-grid-admin', calendarData.present_days || [], calendarData.days_in_month || 30);
-    buildAttGrid('att-grid-admin-full', calendarData.present_days || [], calendarData.days_in_month || 30);
+    buildAttGrid('att-grid-admin', calendarData.present_days || [], calendarData.days_in_month || 30, calendarData.today_day || null);
+    buildAttGrid('att-grid-admin-full', calendarData.present_days || [], calendarData.days_in_month || 30, calendarData.today_day || null);
 
     // Modal close on backdrop click
     _bindModalBackdrops();
@@ -420,10 +420,45 @@ const AdminModule = (() => {
     openModal('view-proof-modal');
   }
 
+  // ── Member Management: status pill + search filtering ──
+  // (same behavior/markup pattern as Staff → View Members)
+  let adminMembersStatusFilter = 'all';
+
+  /** Called when a status pill (All / Active / Pending / Expired / No Plan) is clicked */
+  function filterMembersByStatus(status, pillEl) {
+    adminMembersStatusFilter = status;
+    document.querySelectorAll('#admin-members .status-pill').forEach(p => p.classList.remove('active'));
+    if (pillEl) pillEl.classList.add('active');
+    _applyAdminMembersFilter();
+  }
+
+  /** Called as the admin types in the Member Management search box */
+  function filterMembersTable() {
+    _applyAdminMembersFilter();
+  }
+
+  function _applyAdminMembersFilter() {
+    const searchEl = document.getElementById('admin-members-search');
+    const search   = (searchEl?.value || '').trim().toLowerCase();
+    const rows     = document.querySelectorAll('#members-table tbody tr[data-status]');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+      const statusMatch = adminMembersStatusFilter === 'all' || row.dataset.status === adminMembersStatusFilter;
+      const nameMatch    = !search || (row.dataset.name || '').includes(search);
+      const show = statusMatch && nameMatch;
+      row.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
+    });
+
+    const emptyState = document.getElementById('admin-members-empty-state');
+    if (emptyState) emptyState.style.display = (rows.length && visibleCount === 0) ? 'block' : 'none';
+  }
+
   return {
     init, tab, addMember, openEditMemberModal, saveEditMember, deleteMemberRow,
     generateAnalyticsReport, refreshCurrentReport, exportReportCSV, exportReportPDF,
-    viewPaymentProof
+    viewPaymentProof, filterMembersByStatus, filterMembersTable
   };
 })();
 
@@ -446,4 +481,6 @@ document.addEventListener('DOMContentLoaded', () => {
   window.exportCurrentReportCSV  = AdminModule.exportReportCSV;
   window.exportCurrentReportPDF  = AdminModule.exportReportPDF;
   window.viewPaymentProof        = AdminModule.viewPaymentProof;
+  window.filterAdminMembersByStatus = (status, el) => AdminModule.filterMembersByStatus(status, el);
+  window.filterAdminMembersTable    = () => AdminModule.filterMembersTable();
 });

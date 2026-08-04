@@ -16,6 +16,8 @@ const MemberModule = (() => {
 
   let selectedPlan    = null;
   const LOCKED_TABS   = [];
+  let attendanceView  = { year: null, month: null };
+  let attendanceBusy  = false;
 
   function _planActive() {
     const root = document.getElementById('member-dashboard-root');
@@ -34,12 +36,15 @@ const MemberModule = (() => {
     if (cardName) cardName.textContent = session.name;
 
     const memberData = _parseMemberDashboardData();
-    buildAttGrid('att-grid-member', memberData.present_days || [], memberData.days_in_month || 30);
+    attendanceView = { year: memberData.year || null, month: memberData.month || null };
+    buildAttGrid('att-grid-member', memberData.present_days || [], memberData.days_in_month || 30, memberData.today_day || null);
+    _updateAttendanceNav(memberData.today_day != null);
     _hydrateProgressBars();
     _bindModalBackdrops();
     _initStartDateField();
     _showApprovalNoticeIfAny(memberData.plan_approved_notice);
     _showPaymentApprovedNoticeIfAny(memberData.payment_verified_notice);
+    _showDeclinedNoticeIfAny(memberData.plan_declined_notice);
 
     // Members without an active plan land on Overview (which points them to
     // My Membership); everything else stays locked until they pay.
@@ -74,7 +79,7 @@ const MemberModule = (() => {
     if (!notice) return;
     const msgEl = document.getElementById('payment-approved-message');
     if (msgEl) {
-      msgEl.textContent = `Congratulations! Your payment for the ${notice.plan_name} plan has been approved. Your membership starts on ${notice.start_date}.`;
+      msgEl.textContent = `You have successfully paid your ${notice.plan_name} membership plan! Your membership starts on ${notice.start_date}.`;
     }
     openModal('payment-approved-modal');
   }
@@ -82,6 +87,22 @@ const MemberModule = (() => {
   /** "✕" or "OK" on the payment-approved popup — just dismiss it. */
   function closePaymentApprovedModal() {
     closeModal('payment-approved-modal');
+  }
+
+  /** Show the one-time "Your request was declined" popup, if the server
+   *  flagged this page load as the first one since staff/admin rejected it. */
+  function _showDeclinedNoticeIfAny(notice) {
+    if (!notice) return;
+    const msgEl = document.getElementById('plan-declined-message');
+    if (msgEl) {
+      msgEl.textContent = `Your ${notice.plan_name} plan request was declined. You can submit a new request from My Membership.`;
+    }
+    openModal('plan-declined-modal');
+  }
+
+  /** "✕" or "OK" on the declined popup — just dismiss it. */
+  function closePlanDeclinedModal() {
+    closeModal('plan-declined-modal');
   }
 
   function _parseMemberDashboardData() {
@@ -92,6 +113,71 @@ const MemberModule = (() => {
     } catch (e) {
       return {};
     }
+  }
+
+  /** Enable/disable the "NEXT" arrow — members can't browse into the future. */
+  function _updateAttendanceNav(isCurrentMonth) {
+    const nextBtn = document.getElementById('attendance-next-month');
+    if (nextBtn) nextBtn.disabled = !!isCurrentMonth;
+  }
+
+  function _escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  function _renderAttendanceSessionHistory(rows) {
+    const body = document.getElementById('attendance-session-history-body');
+    if (!body) return;
+    if (!rows || !rows.length) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);">No sessions logged this month yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(s => `<tr><td>${_escapeHtml(s.date)}</td><td>${_escapeHtml(s.check_in)}</td><td>${_escapeHtml(s.check_out)}</td><td>${_escapeHtml(s.duration)}</td></tr>`).join('');
+  }
+
+  /** Back/forward navigation for the "My Attendance" calendar — fetches that
+   *  month's data from the server and re-renders in place, no page reload. */
+  function changeAttendanceMonth(direction) {
+    if (attendanceBusy) return;
+    if (!attendanceView.year || !attendanceView.month) return;
+
+    let { year, month } = attendanceView;
+    month += direction;
+    if (month < 1)  { month = 12; year -= 1; }
+    if (month > 12) { month = 1;  year += 1; }
+
+    attendanceBusy = true;
+    const prevBtn = document.getElementById('attendance-prev-month');
+    const nextBtn = document.getElementById('attendance-next-month');
+    const nextWasDisabled = nextBtn ? nextBtn.disabled : false;
+    if (prevBtn) prevBtn.disabled = true;
+    if (nextBtn) nextBtn.disabled = true;
+
+    fetch(`/member/attendance-month?year=${year}&month=${month}`)
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast(data.error || 'Could not load that month.', 'error');
+          if (prevBtn) prevBtn.disabled = false;
+          if (nextBtn) nextBtn.disabled = nextWasDisabled;
+          return;
+        }
+        attendanceView = { year: data.year, month: data.month };
+        const label = document.getElementById('attendance-month-label');
+        if (label) label.textContent = data.month_label;
+        buildAttGrid('att-grid-member', data.present_days || [], data.days_in_month || 30, data.today_day || null);
+        _renderAttendanceSessionHistory(data.session_history);
+        if (prevBtn) prevBtn.disabled = false;
+        _updateAttendanceNav(data.is_current_month);
+      })
+      .catch(() => {
+        showToast('Could not reach the server. Please try again.', 'error');
+        if (prevBtn) prevBtn.disabled = false;
+        if (nextBtn) nextBtn.disabled = nextWasDisabled;
+      })
+      .finally(() => { attendanceBusy = false; });
   }
 
   function _hydrateProgressBars() {
@@ -185,8 +271,12 @@ const MemberModule = (() => {
     preview.style.display = 'block';
   }
 
-  /** Validate and submit the chosen payment method (Cash/GCash) for the
-   *  member's current pending plan request, from the Payment tab. */
+  let _pendingPaymentSubmission = null;
+
+  /** Validate the chosen payment method (Cash/GCash), then ask for
+   *  confirmation before actually sending it — submitting fires off a real
+   *  payment request that admin will act on, so we don't want an accidental
+   *  click to submit it right away. */
   function submitPaymentMethod() {
     const methodEl       = document.getElementById('payment-method-select');
     const paymentMethod  = methodEl?.value || 'cash';
@@ -204,6 +294,29 @@ const MemberModule = (() => {
       showToast('Please attach a screenshot of your GCash proof of payment', 'error');
       return;
     }
+
+    _pendingPaymentSubmission = { paymentMethod, isGcash, gcashRef, gcashProofFile };
+    openModal('confirm-payment-modal');
+  }
+
+  /** "Yes" button inside the payment confirmation modal — actually submits. */
+  function confirmSubmitPayment() {
+    closeModal('confirm-payment-modal');
+    if (!_pendingPaymentSubmission) return;
+    _doSubmitPaymentMethod(_pendingPaymentSubmission);
+    _pendingPaymentSubmission = null;
+  }
+
+  /** "No" button inside the payment confirmation modal — discards it and
+   *  returns to the Payment tab, no changes made. */
+  function cancelSubmitPayment() {
+    closeModal('confirm-payment-modal');
+    _pendingPaymentSubmission = null;
+  }
+
+  /** Actually send the chosen payment method to the backend. */
+  function _doSubmitPaymentMethod(p) {
+    const { paymentMethod, isGcash, gcashRef, gcashProofFile } = p;
 
     const formData = new FormData();
     formData.append('payment_method', paymentMethod);
@@ -224,13 +337,25 @@ const MemberModule = (() => {
           showToast(data.error || 'Could not submit payment.', 'error');
           return;
         }
-        showToast(data.message || 'Payment submitted! Awaiting verification.', 'success');
-        setTimeout(() => window.location.reload(), 1200);
+        const msgEl = document.getElementById('payment-submit-success-message');
+        if (msgEl) {
+          msgEl.textContent = isGcash
+            ? "You have successfully submitted your payment. Please wait for admin's approval."
+            : 'Please go to staff for your membership payment.';
+        }
+        openModal('payment-submit-success-modal');
       })
       .catch(() => {
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         showToast('Could not reach the server. Please try again.', 'error');
       });
+  }
+
+  /** "OK" button on the payment success modal — reload so the dashboard
+   *  reflects the newly-submitted payment status. */
+  function closePaymentSubmitSuccessModal() {
+    closeModal('payment-submit-success-modal');
+    window.location.reload();
   }
 
   let _pendingSubmission = null;
@@ -568,11 +693,12 @@ const MemberModule = (() => {
   return {
     init, tab, submitRenewalPayment, confirmPlanRequest, cancelPlanRequest,
     closePlanSuccessModal, closePlanApprovedModal, goToPaymentFromApproval,
-    closePaymentApprovedModal,
+    closePaymentApprovedModal, closePlanDeclinedModal,
     selectRenewalPlan, openServiceModal,
     toggleStudentIdField, previewStudentId, toggleCoachField,
     togglePaymentProofField, previewGcashProof, submitPaymentMethod,
-    openPlanModal, selectPlanFromModal
+    confirmSubmitPayment, cancelSubmitPayment, closePaymentSubmitSuccessModal,
+    openPlanModal, selectPlanFromModal, changeAttendanceMonth
   };
 })();
 
@@ -593,6 +719,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.closePlanSuccessModal = MemberModule.closePlanSuccessModal;
   window.closePlanApprovedModal = MemberModule.closePlanApprovedModal;
   window.closePaymentApprovedModal = MemberModule.closePaymentApprovedModal;
+  window.closePlanDeclinedModal = MemberModule.closePlanDeclinedModal;
   window.goToPaymentFromApproval = MemberModule.goToPaymentFromApproval;
   window.selectPlan           = MemberModule.selectRenewalPlan;
   window.toggleStudentIdField = MemberModule.toggleStudentIdField;
@@ -601,6 +728,10 @@ document.addEventListener('DOMContentLoaded', () => {
   window.togglePaymentProofField = MemberModule.togglePaymentProofField;
   window.previewGcashProof       = MemberModule.previewGcashProof;
   window.submitPaymentMethod     = MemberModule.submitPaymentMethod;
+  window.confirmSubmitPayment    = MemberModule.confirmSubmitPayment;
+  window.cancelSubmitPayment     = MemberModule.cancelSubmitPayment;
+  window.closePaymentSubmitSuccessModal = MemberModule.closePaymentSubmitSuccessModal;
   window.openPlanModal        = MemberModule.openPlanModal;
   window.selectPlanFromModal  = MemberModule.selectPlanFromModal;
+  window.changeAttendanceMonth = MemberModule.changeAttendanceMonth;
 });

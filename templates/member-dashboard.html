@@ -168,6 +168,15 @@
               <button class="btn btn-red btn-sm" onclick="memberTab('payment', document.getElementById('nav-member-payment'))">GO TO PAYMENT</button>
             </div>
             {% else %}
+            {% if plan and plan.status == 'Declined' %}
+            <div class="gate-banner" style="border-color:rgba(239,68,68,0.35);">
+              <span class="gate-banner-icon">❌</span>
+              <div>
+                <div class="gate-banner-title">Your {{ plan.name }} plan request was declined</div>
+                <div class="gate-banner-text">Check with staff or admin for the reason, then submit a new request below whenever you're ready.</div>
+              </div>
+            </div>
+            {% endif %}
             <div class="plan-grid">
               <div class="plan-card" onclick="selectPlan(this,'daily')">
                 <div class="plan-name">Daily</div><div class="plan-price">₱100</div>
@@ -353,15 +362,19 @@
               <td>{{ p.date }}</td>
               <td>{{ p.plan }}</td>
               <td>₱{{ p.amount }}</td>
-              <td>{{ p.method }}</td>
+              <td>{{ '' if p.method.startswith('Pending') else p.method }}</td>
               <td>{{ p.reference }}</td>
               <td>
                 {% if p.status == 'verified' %}
                 <span class="badge badge-green">Approved</span>
                 {% elif p.status == 'rejected' %}
-                <span class="badge badge-red">Rejected</span>
-                {% elif p.status == 'approved' %}
+                <span class="badge badge-red">Declined</span>
+                {% elif p.status == 'approved' and p.method.startswith('Pending') %}
                 <span class="badge badge-gold">Awaiting Payment</span>
+                {% elif p.status == 'approved' and p.method == 'Cash' %}
+                <span class="badge badge-blue">Pending — awaiting staff approval</span>
+                {% elif p.status == 'approved' %}
+                <span class="badge badge-blue">Pending — awaiting admin approval</span>
                 {% else %}
                 <span class="badge badge-blue">Pending Approval</span>
                 {% endif %}
@@ -377,16 +390,22 @@
 
     <!-- ── My Attendance ────────────────── -->
     <div id="member-attendance" class="sub-panel">
-      <div class="page-header"><div><div class="page-title">MY ATTENDANCE</div><div class="page-subtitle">{{ month_label }}</div></div></div>
+      <div class="page-header"><div><div class="page-title">MY ATTENDANCE</div><div class="page-subtitle" id="attendance-month-label">{{ month_label }}</div></div></div>
       <div class="panel">
-        <div class="panel-header"><div class="panel-title">Attendance Calendar</div></div>
+        <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="panel-title">Attendance Calendar</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button type="button" class="btn btn-sm btn-outline" id="attendance-prev-month" onclick="changeAttendanceMonth(-1)" aria-label="Previous month">‹ PREV</button>
+            <button type="button" class="btn btn-sm btn-outline" id="attendance-next-month" onclick="changeAttendanceMonth(1)" aria-label="Next month">NEXT ›</button>
+          </div>
+        </div>
         <div class="panel-body"><div class="att-grid" id="att-grid-member"></div></div>
       </div>
       <div class="panel">
         <div class="panel-header"><div class="panel-title">Session History</div></div>
         <table class="data-table">
           <thead><tr><th>Date</th><th>Check-in</th><th>Check-out</th><th>Duration</th></tr></thead>
-          <tbody>
+          <tbody id="attendance-session-history-body">
             {% for s in session_history %}
             <tr><td>{{ s.date }}</td><td>{{ s.check_in }}</td><td>{{ s.check_out }}</td><td>{{ s.duration }}</td></tr>
             {% else %}
@@ -730,18 +749,64 @@
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
     </div>
-    <div class="modal-title" style="text-align:center;">PAYMENT APPROVED!</div>
+    <div class="modal-title" style="text-align:center;">PAYMENT SUCCESSFUL</div>
     <div id="payment-approved-message" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 22px;">
-      Congratulations! Your payment has been approved.
+      You have successfully paid your membership plan!
     </div>
     <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closePaymentApprovedModal()">OK</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="plan-declined-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closePlanDeclinedModal()">✕</button>
+    <div style="display:flex;justify-content:center;margin-bottom:14px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);display:flex;align-items:center;justify-content:center;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <div class="modal-title" style="text-align:center;">REQUEST DECLINED</div>
+    <div id="plan-declined-message" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 22px;">
+      Your plan request was declined.
+    </div>
+    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closePlanDeclinedModal()">OK</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirm-payment-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="cancelSubmitPayment()">✕</button>
+    <div class="modal-title" style="text-align:center;">CONFIRM PAYMENT</div>
+    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
+      Are you sure you want to submit your payment?
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="cancelSubmitPayment()">NO</button>
+      <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="confirmSubmitPayment()">YES</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="payment-submit-success-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closePaymentSubmitSuccessModal()">✕</button>
+    <div style="display:flex;justify-content:center;margin-bottom:14px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);display:flex;align-items:center;justify-content:center;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+    <div class="modal-title" style="text-align:center;">PAYMENT SUBMITTED</div>
+    <div id="payment-submit-success-message" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 22px;">
+      You have successfully submitted your payment. Please wait for admin's approval.
+    </div>
+    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closePaymentSubmitSuccessModal()">OK</button>
   </div>
 </div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script id="member-dashboard-data" type="application/json">{{ {'present_days': present_days, 'days_in_month': days_in_month, 'plan_approved_notice': plan_approved_notice, 'payment_verified_notice': payment_verified_notice}|tojson }}</script>
+<script id="member-dashboard-data" type="application/json">{{ {'present_days': present_days, 'days_in_month': days_in_month, 'today_day': today_day, 'year': attendance_year, 'month': attendance_month, 'plan_approved_notice': plan_approved_notice, 'payment_verified_notice': payment_verified_notice, 'plan_declined_notice': plan_declined_notice}|tojson }}</script>
 <script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tr-member.js') }}"></script>
 </body>

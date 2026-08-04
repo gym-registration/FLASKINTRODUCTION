@@ -75,6 +75,86 @@ def _manila_day_bounds_utc(day):
     )
 
 
+def _get_member_attendance_month(user_id, year, month):
+    """Attendance calendar grid + session history for one member, for an
+    arbitrary (year, month) — powers both the initial 'My Attendance' page
+    load and the back/forward month navigation (see /member/attendance-month).
+    If the requested month is the current one, today_day is set so days that
+    haven't happened yet render as 'upcoming' rather than 'absent'."""
+    today = _today_manila()
+    days_in_month = calendar.monthrange(year, month)[1]
+
+    month_start_dt, _ = _manila_day_bounds_utc(date(year, month, 1))
+    next_month  = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    month_end_dt, _ = _manila_day_bounds_utc(next_month)
+
+    attendance_rows = (
+        Attendance.query
+        .filter(Attendance.member_id == user_id,
+                Attendance.check_in >= month_start_dt,
+                Attendance.check_in < month_end_dt)
+        .order_by(Attendance.check_in.desc())
+        .all()
+    )
+
+    present_days = sorted({_to_manila(a.check_in).day for a in attendance_rows})
+
+    session_history = []
+    for a in attendance_rows[:10]:
+        duration_text = '—'
+        if a.check_out:
+            mins = a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
+            h, m = divmod(mins, 60)
+            duration_text = f'{h}h {m}m' if h else f'{m}m'
+        check_in_manila  = _to_manila(a.check_in)
+        check_out_manila = _to_manila(a.check_out)
+        session_history.append({
+            'date':      check_in_manila.strftime('%b %d, %Y'),
+            'check_in':  check_in_manila.strftime('%I:%M %p').lstrip('0'),
+            'check_out': check_out_manila.strftime('%I:%M %p').lstrip('0') if check_out_manila else '—',
+            'duration':  duration_text,
+        })
+
+    is_current_month = (year == today.year and month == today.month)
+
+    return {
+        'year': year,
+        'month': month,
+        'month_label': date(year, month, 1).strftime('%B %Y'),
+        'days_in_month': days_in_month,
+        'today_day': today.day if is_current_month else None,
+        'is_current_month': is_current_month,
+        'present_days': present_days,
+        'session_history': session_history,
+    }
+
+
+@app.route('/member/attendance-month')
+def member_attendance_month():
+    """AJAX endpoint behind the back/forward arrows on 'My Attendance' —
+    returns the calendar + session history for whichever month was requested,
+    without a full page reload."""
+    if session.get('role') != 'member':
+        return jsonify(success=False, error='Unauthorized.'), 403
+    user_id = session.get('user_id')
+
+    try:
+        year  = int(request.args.get('year'))
+        month = int(request.args.get('month'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error='Invalid month.'), 400
+    if month < 1 or month > 12:
+        return jsonify(success=False, error='Invalid month.'), 400
+
+    today = _today_manila()
+    if (year, month) > (today.year, today.month):
+        return jsonify(success=False, error='Cannot view a future month.'), 400
+    if year < 2020:
+        return jsonify(success=False, error='Invalid month.'), 400
+
+    return jsonify(success=True, **_get_member_attendance_month(user_id, year, month))
+
+
 DB_USER = os.environ.get('DB_USER', 'root')
 DB_PASSWORD = os.environ.get('DB_PASSWORD', '')
 DB_HOST = os.environ.get('DB_HOST', '127.0.0.1')
@@ -761,6 +841,15 @@ def admin_verify_payment(payment_id):
         if action == 'reject':
             payment.status = 'rejected'
             payment.verified_at = datetime.now(timezone.utc)
+            payment.notified = False  # let the member see a "request declined" notice
+            # Only flip the membership itself to 'declined' if it was sitting
+            # there *because of this pending request* (status == 'pending').
+            # If the member already has an active plan and this was a renewal
+            # request on top of it, leave the active membership untouched —
+            # only the renewal attempt was declined, not their current plan.
+            membership = Membership.query.filter_by(member_id=payment.member_id).first()
+            if membership and membership.status == 'pending':
+                membership.status = 'declined'
             db.session.commit()
             return jsonify(success=True, message='Plan request rejected.', status='rejected')
 
@@ -771,29 +860,30 @@ def admin_verify_payment(payment_id):
         return jsonify(success=True, message='Plan approved — the member can now submit payment.', status='approved')
 
     # ── Stage 2: the plan was already approved by staff; this verifies the
-    #    payment the member has since submitted (Cash or GCash). This is
-    #    admin's call — staff doesn't verify payments. ──
-    if session.get('role') == 'staff':
-        # From staff's point of view this card is just stale — the plan they
-        # were about to approve/reject was already approved (by them or a
-        # colleague) and has since moved on to the payment stage, which is
-        # entirely admin's job. This is not something staff did wrong, so
-        # don't show it as an error — just tell the client to drop the card.
-        return jsonify(
-            success=False,
-            error='This plan was already approved and is now awaiting the member\'s payment — no further action needed here.',
-            stale=True,
-        ), 409
-    # session.get('role') can only be 'admin' or 'staff' at this point (checked
-    # at the top of the route) — staff is handled above, so we're admin here.
+    #    payment the member has since submitted. Who handles it depends on
+    #    the payment method the member chose — Cash payments are confirmed
+    #    by front-desk staff, GCash payments are verified by admin. ──
     if payment.method.startswith('Pending'):
         return jsonify(success=False, error='This member has not chosen a payment method yet. Ask them to complete payment on their Payment tab before verifying.'), 400
+
+    required_role = 'staff' if payment.method == 'Cash' else 'admin'
+    if session.get('role') != required_role:
+        # Not this role's card to act on — not an error, just stale for them.
+        if required_role == 'staff':
+            error = 'This is a Cash payment — it\'s confirmed by front-desk staff, no action needed here.'
+        else:
+            error = 'This is a GCash payment — it\'s verified by admin, no action needed here.'
+        return jsonify(success=False, error=error, stale=True), 409
     if action == 'approve' and payment.method == 'GCash' and not payment.proof_image_path:
         return jsonify(success=False, error='No GCash proof of payment was uploaded for this request.'), 400
 
     if action == 'reject':
         payment.status = 'rejected'
         payment.verified_at = datetime.now(timezone.utc)
+        payment.notified = False  # let the member see a "request declined" notice
+        membership = Membership.query.filter_by(member_id=payment.member_id).first()
+        if membership and membership.status == 'pending':
+            membership.status = 'declined'
         db.session.commit()
         return jsonify(success=True, message='Payment rejected.', status='rejected')
 
@@ -842,6 +932,23 @@ def admin_verify_payment(payment_id):
         status='verified',
         expiry=membership.expiry_date.strftime('%b %d, %Y'),
     )
+
+
+def _payment_stage(p):
+    """Classify an in-progress Payment into its approval stage:
+       - 'approval'        : the plan request itself, awaiting staff sign-off
+                              (no payment method chosen yet)
+       - 'awaiting_payment': plan approved, member hasn't chosen Cash/GCash yet
+       - 'verify_cash'     : Cash payment, confirmed by front-desk staff
+       - 'verify_gcash'    : GCash payment, verified by admin
+    """
+    if p.status == 'pending':
+        return 'approval'
+    if p.method.startswith('Pending'):
+        return 'awaiting_payment'
+    if p.method == 'Cash':
+        return 'verify_cash'
+    return 'verify_gcash'
 
 
 def _find_member(identifier):
@@ -1061,7 +1168,7 @@ def member_submit_payment_method():
         payment.reference_number  = gcash_reference
         payment.proof_image_path  = proof_relative_path
     else:
-        payment.method            = 'Cash — to be confirmed by staff'
+        payment.method            = 'Cash'
         payment.reference_number  = None
         payment.proof_image_path  = None
 
@@ -1084,7 +1191,6 @@ def staff_record_payment():
     member_identifier = data.get('member_identifier') or ''
     plan_name          = (data.get('plan')      or '').strip()
     method              = (data.get('method')    or '').strip()
-    reference           = (data.get('reference') or '').strip()
 
     member, error = _find_member(member_identifier)
     if error:
@@ -1096,13 +1202,16 @@ def staff_record_payment():
 
     if not method:
         return jsonify(success=False, error='Please select a payment method.'), 400
+    if method != 'Cash':
+        # Front-desk entries are Cash only — GCash goes through the member's
+        # own submission + Admin verification flow, not this manual form.
+        return jsonify(success=False, error='This form only records Cash payments. GCash payments are verified by Admin from the member\'s own submission.'), 400
 
     new_payment = Payment(
         member_id=member.id,
         plan_id=plan.id,
         amount=plan.price,
         method=method,
-        reference_number=reference or None,
         status='verified',
         recorded_by_id=session.get('user_id'),
         verified_at=datetime.now(timezone.utc),
@@ -1329,13 +1438,22 @@ def member():
 
     current_plan = None
     if membership and plan_obj:
+        # Count down from whichever is later: today, or the membership's own
+        # start date. Without this, a membership that hasn't started yet
+        # (start_date in the future) shows a "Days Left" figure counted from
+        # today — which can end up LONGER than the plan's own duration
+        # (e.g. a Monthly plan showing 63 days left). Clamping to the start
+        # date keeps Days Left always inside the plan's real length.
+        effective_start = max(membership.start_date, today)
         days_total = max((membership.expiry_date - membership.start_date).days, 1)
-        days_left  = max((membership.expiry_date - today).days, 0)
+        days_left  = max((membership.expiry_date - effective_start).days, 0)
         days_used  = max(min(days_total - days_left, days_total), 0)
         percent_used = int((days_used / days_total) * 100) if days_total else 0
 
         if membership.expiry_date < today:
             plan_status = 'Expired'
+        elif membership.status == 'declined':
+            plan_status = 'Declined'
         elif membership.status == 'pending':
             plan_status = 'Pending'
         else:
@@ -1354,37 +1472,15 @@ def member():
         }
 
     # ── Attendance (current month) ──
-    days_in_month = calendar.monthrange(today.year, today.month)[1]
-    month_start    = today.replace(day=1)
-    month_start_dt, _ = _manila_day_bounds_utc(month_start)
-
-    attendance_rows = (
-        Attendance.query
-        .filter(Attendance.member_id == user.id, Attendance.check_in >= month_start_dt)
-        .order_by(Attendance.check_in.desc())
-        .all()
-    )
-
-    present_days = sorted({_to_manila(a.check_in).day for a in attendance_rows})
-
-    session_history = []
-    for a in attendance_rows[:10]:
-        duration_text = '—'
-        if a.check_out:
-            mins = a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
-            h, m = divmod(mins, 60)
-            duration_text = f'{h}h {m}m' if h else f'{m}m'
-        check_in_manila  = _to_manila(a.check_in)
-        check_out_manila = _to_manila(a.check_out)
-        session_history.append({
-            'date':      check_in_manila.strftime('%b %d, %Y'),
-            'check_in':  check_in_manila.strftime('%I:%M %p').lstrip('0'),
-            'check_out': check_out_manila.strftime('%I:%M %p').lstrip('0') if check_out_manila else '—',
-            'duration':  duration_text,
-        })
+    current_month_data = _get_member_attendance_month(user.id, today.year, today.month)
+    days_in_month   = current_month_data['days_in_month']
+    present_days    = current_month_data['present_days']
+    session_history = current_month_data['session_history']
+    today_day       = current_month_data['today_day']
 
     days_elapsed    = today.day
     attendance_rate = int((len(present_days) / days_elapsed) * 100) if days_elapsed else 0
+
 
     # ── Body goals (most recent entry) ──
     goal = (
@@ -1488,6 +1584,23 @@ def member():
         just_verified_row.notified = True
         db.session.commit()
 
+    # ── Just-declined notice (shown once as a "Your request was declined"
+    #    popup) — fires when staff/admin rejects either the plan request or
+    #    the payment itself, at whichever stage it happened. ──
+    just_declined_row = (
+        Payment.query
+        .filter_by(member_id=user.id, status='rejected', notified=False)
+        .order_by(Payment.paid_at.desc())
+        .first()
+    )
+    plan_declined_notice = None
+    if just_declined_row is not None:
+        plan_declined_notice = {
+            'plan_name': just_declined_row.plan.name if just_declined_row.plan else 'membership',
+        }
+        just_declined_row.notified = True
+        db.session.commit()
+
     # Members without a paid, active membership only get Overview + My
     # Membership — everything else (attendance history, goals, services) is
     # locked behind an active plan.
@@ -1500,7 +1613,10 @@ def member():
         plan_active=plan_active,
         present_days=present_days,
         days_in_month=days_in_month,
+        today_day=today_day,
         month_label=today.strftime('%B %Y'),
+        attendance_year=today.year,
+        attendance_month=today.month,
         session_history=session_history,
         attendance_rate=attendance_rate,
         goal=goal,
@@ -1509,6 +1625,7 @@ def member():
         pending_payment=pending_payment,
         plan_approved_notice=plan_approved_notice,
         payment_verified_notice=payment_verified_notice,
+        plan_declined_notice=plan_declined_notice,
     )
 
 
@@ -1529,6 +1646,7 @@ def _get_attendance_calendar():
     return {
         'present_days': present_days,
         'days_in_month': days_in_month,
+        'today_day': today.day,
         'month_label': today.strftime('%B %Y'),
     }
 
@@ -1647,12 +1765,12 @@ def staff():
         if m['status'] == 'Active' and m['expiry_date'] and 0 <= (m['expiry_date'] - today).days <= 7
     ]
 
-    # ── Pending plan requests (Request tab) — staff approves the plan
-    #    itself before any payment is involved. Payment verification (Cash
-    #    or GCash) happens later, entirely on the Admin side. ──
+    # ── Pending plan requests & payments (Request tab). Staff approves the
+    #    plan request itself and confirms Cash payments; GCash payments are
+    #    verified by admin and shown here for visibility only. ──
     pending_requests_rows = (
         Payment.query
-        .filter_by(status='pending')
+        .filter(Payment.status.in_(['pending', 'approved']))
         .order_by(Payment.paid_at.desc())
         .all()
     )
@@ -1669,6 +1787,7 @@ def staff():
         'student_id_image_path': p.student_id_image_path,
         'wants_coach': p.wants_coach,
         'coach_name': p.coach_name,
+        'stage': _payment_stage(p),
     } for p in pending_requests_rows]
 
 
@@ -1713,6 +1832,18 @@ def staff():
         'expiring_soon':    len(expiring_soon),
     }
 
+    # ── Lightweight member list for the Payment Record autocomplete/dropdown.
+    #    Keyed by email (unique + always accepted by _find_member), with the
+    #    member's current plan so the UI can auto-select the matching Plan
+    #    option once a member is chosen. JSON-safe (no date objects). ──
+    payment_members = [{
+        'id': m['id'],
+        'name': m['name'],
+        'email': m['email'],
+        'plan': m['plan'],
+        'status': m['status'],
+    } for m in members]
+
     return render_template(
         'staff-dashboard.html',
         attendance_today=attendance_today,
@@ -1723,6 +1854,7 @@ def staff():
         pending_requests=pending_requests,
         processed_requests=processed_requests,
         coach_assignments=coach_assignments,
+        payment_members=payment_members,
         current_user=User.query.get(session['user_id']),
     )
 
@@ -1750,6 +1882,8 @@ def _get_members_with_plans():
             expiry_text = expiry_date.strftime('%b %d, %Y') if expiry_date else '—'
             if expiry_date and expiry_date < today:
                 status_label = 'Expired'
+            elif membership.status == 'declined':
+                status_label = 'Declined'
             elif membership.status == 'pending':
                 status_label = 'Pending'
             else:
@@ -1783,9 +1917,11 @@ def admin():
     attendance_today = _get_attendance_today()
     attendance_calendar = _get_attendance_calendar()
 
-    # Two stages share this list: 'approval' (plan awaiting admin sign-off,
-    # no payment yet) and 'verify' (member has since paid and it's awaiting
-    # confirmation, e.g. GCash proof review).
+    # This list spans every in-progress stage: 'approval' (plan request
+    # awaiting staff sign-off), 'awaiting_payment' (approved, member hasn't
+    # chosen a method yet), 'verify_cash' (Cash — staff's job) and
+    # 'verify_gcash' (GCash — admin's job). Admin sees all four for
+    # visibility but can only act on 'verify_gcash'.
     pending_payments_rows = (
         Payment.query
         .filter(Payment.status.in_(['pending', 'approved']))
@@ -1805,11 +1941,7 @@ def admin():
         'student_id_image_path': p.student_id_image_path,
         'wants_coach': p.wants_coach,
         'coach_name': p.coach_name,
-        'stage': (
-            'approval' if p.status == 'pending'
-            else 'awaiting_payment' if p.method.startswith('Pending')
-            else 'verify'
-        ),
+        'stage': _payment_stage(p),
     } for p in pending_payments_rows]
 
     payment_history_rows = (

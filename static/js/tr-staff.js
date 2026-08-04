@@ -47,12 +47,58 @@ const StaffModule = (() => {
     Navigation.activateTab('staff', tabName, navEl);
   }
 
+  // ── Payment Record: member autocomplete + plan auto-fill ──
+  let _paymentMembers = null;
+
+  /** Lazily parse the JSON data block (id/name/email/plan/status per member),
+   *  embedded server-side so the lookup works without an extra fetch. */
+  function _loadPaymentMembers() {
+    if (_paymentMembers) return _paymentMembers;
+    const el = document.getElementById('staff-payment-members-data');
+    try {
+      _paymentMembers = el ? JSON.parse(el.textContent) : [];
+    } catch (e) {
+      _paymentMembers = [];
+    }
+    return _paymentMembers;
+  }
+
+  /** Select the <option> in #pay-plan whose plan name (text before the
+   *  "—") matches the given plan name, case-insensitively. No-op if the
+   *  plan isn't one of the listed options. */
+  function _selectPlanByName(planName) {
+    const select = document.getElementById('pay-plan');
+    if (!select || !planName) return;
+    const target = planName.trim().toLowerCase();
+    for (const opt of select.options) {
+      const optPlanName = opt.textContent.split('—')[0].trim().toLowerCase();
+      if (optPlanName === target) {
+        select.value = opt.value;
+        return;
+      }
+    }
+  }
+
+  /** Fired on every keystroke / dropdown pick in the Member field. When the
+   *  typed value exactly matches a known member's email (which is what the
+   *  datalist option value is set to — picking a suggestion fills the input
+   *  with it), auto-select that member's currently availed plan. */
+  function onPayMemberInput(value) {
+    const identifier = (value || '').trim().toLowerCase();
+    if (!identifier) return;
+
+    const members = _loadPaymentMembers();
+    const match = members.find(m => (m.email || '').toLowerCase() === identifier);
+    if (!match || !match.plan || match.plan === '—') return;
+
+    _selectPlanByName(match.plan);
+  }
+
   /** Record a front-desk payment and persist it to the database */
   function recordPayment() {
     const memberIdentifier = _val('pay-member');
     const planText          = document.getElementById('pay-plan')?.value   || '';
     const method            = document.getElementById('pay-method')?.value || '';
-    const reference          = _val('pay-reference');
     const planName          = planText.split('—')[0].trim();
 
     if (!memberIdentifier) {
@@ -69,8 +115,7 @@ const StaffModule = (() => {
       body: JSON.stringify({
         member_identifier: memberIdentifier,
         plan:    planName,
-        method:  method,
-        reference: reference
+        method:  method
       })
     })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
@@ -81,10 +126,8 @@ const StaffModule = (() => {
           return;
         }
 
-        ['pay-member', 'pay-reference'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.value = '';
-        });
+        const memberEl = document.getElementById('pay-member');
+        if (memberEl) memberEl.value = '';
         const planEl = document.getElementById('pay-plan');
         if (planEl) planEl.selectedIndex = 0;
 
@@ -262,7 +305,7 @@ const StaffModule = (() => {
     openModal('view-proof-modal');
   }
 
-  return { init, tab, recordPayment, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof };
+  return { init, tab, recordPayment, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput };
 })();
 
 
@@ -282,4 +325,5 @@ document.addEventListener('DOMContentLoaded', () => {
   window.filterMembersByStatus = (status, el) => StaffModule.filterMembersByStatus(status, el);
   window.filterMembersTable    = () => StaffModule.filterMembersTable();
   window.viewPaymentProof      = (url, title) => StaffModule.viewPaymentProof(url, title);
+  window.onPayMemberInput      = (value) => StaffModule.onPayMemberInput(value);
 });

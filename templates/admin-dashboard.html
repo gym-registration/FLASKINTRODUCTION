@@ -107,8 +107,10 @@
                   <span class="badge badge-blue">Awaiting Plan Approval</span>
                   {% elif p.stage == 'awaiting_payment' %}
                   <span class="badge badge-gold">Approved — Awaiting Payment</span>
+                  {% elif p.stage == 'verify_cash' %}
+                  <span class="badge badge-blue">Awaiting Staff Approval</span>
                   {% else %}
-                  <span class="badge badge-blue">Awaiting Payment Verification</span>
+                  <span class="badge badge-blue">Awaiting Admin Approval</span>
                   {% endif %}
                   {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
                   {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
@@ -122,6 +124,8 @@
                 <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting staff approval</span>
                 {% elif p.stage == 'awaiting_payment' %}
                 <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting payment from member</span>
+                {% elif p.stage == 'verify_cash' %}
+                <span class="badge badge-muted" style="align-self:center;">⏳ Confirmed by front-desk staff</span>
                 {% else %}
                 <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Confirm Payment</button>
                 <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
@@ -150,16 +154,29 @@
           <div class="page-subtitle">All registered members</div>
         </div>
         <div style="display:flex;gap:10px;">
-          <input class="search-input" placeholder="Search members..." oninput="filterTable(this)">
+          <input class="search-input" id="admin-members-search" placeholder="Search members..." oninput="filterAdminMembersTable()">
           <button class="btn btn-red" onclick="openModal('add-member-modal')">+ ADD MEMBER</button>
         </div>
       </div>
+
+      <!-- Status filter pills (same behavior as Staff → View Members) -->
+      <div class="status-filter-bar" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <button type="button" class="status-pill active" data-status="all" onclick="filterAdminMembersByStatus('all', this)">All</button>
+        <button type="button" class="status-pill" data-status="active" onclick="filterAdminMembersByStatus('active', this)">Active</button>
+        <button type="button" class="status-pill" data-status="pending" onclick="filterAdminMembersByStatus('pending', this)">Pending</button>
+        <button type="button" class="status-pill" data-status="expired" onclick="filterAdminMembersByStatus('expired', this)">Expired</button>
+        <button type="button" class="status-pill" data-status="declined" onclick="filterAdminMembersByStatus('declined', this)">Declined</button>
+        <button type="button" class="status-pill" data-status="no-plan" onclick="filterAdminMembersByStatus('no-plan', this)">No Plan</button>
+      </div>
+
       <div class="panel">
         <table class="data-table" id="members-table">
           <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             {% for m in members %}
-            <tr data-id="{{ m.id }}" data-plan="{{ m.plan }}" data-phone="{{ m.phone or '' }}" data-expiry-iso="{{ m.expiry_date.isoformat() if m.expiry_date else '' }}" data-first-name="{{ m.first_name }}" data-middle-initial="{{ m.middle_initial or '' }}" data-last-name="{{ m.last_name }}" data-extension-name="{{ m.extension_name or '' }}">
+            <tr data-id="{{ m.id }}" data-plan="{{ m.plan }}" data-phone="{{ m.phone or '' }}" data-expiry-iso="{{ m.expiry_date.isoformat() if m.expiry_date else '' }}" data-first-name="{{ m.first_name }}" data-middle-initial="{{ m.middle_initial or '' }}" data-last-name="{{ m.last_name }}" data-extension-name="{{ m.extension_name or '' }}"
+                data-name="{{ m.name|lower }}"
+                data-status="{{ 'active' if m.status == 'Active' else 'pending' if m.status == 'Pending' else 'expired' if m.status == 'Expired' else 'declined' if m.status == 'Declined' else 'no-plan' }}">
               <td>#{{ m.id }}</td><td>{{ m.name }}</td><td>{{ m.email }}</td><td>{{ m.plan }}</td><td>{{ m.expiry }}</td>
               <td>
                 {% if m.status == 'Active' %}
@@ -168,6 +185,8 @@
                 <span class="badge badge-blue">Pending</span>
                 {% elif m.status == 'Expired' %}
                 <span class="badge badge-red">Expired</span>
+                {% elif m.status == 'Declined' %}
+                <span class="badge badge-red">Declined</span>
                 {% else %}
                 <span class="badge badge-muted">No Plan</span>
                 {% endif %}
@@ -182,6 +201,9 @@
             {% endfor %}
           </tbody>
         </table>
+        <div id="admin-members-empty-state" style="display:none;text-align:center;color:var(--muted);padding:20px;">
+          No members match this filter.
+        </div>
       </div>
     </div><!-- /admin-members -->
 
@@ -205,8 +227,10 @@
                 <span class="badge badge-blue">Awaiting Plan Approval</span>
                 {% elif p.stage == 'awaiting_payment' %}
                 <span class="badge badge-gold">Approved — Awaiting Payment</span>
+                {% elif p.stage == 'verify_cash' %}
+                <span class="badge badge-blue">Awaiting Staff Approval</span>
                 {% else %}
-                <span class="badge badge-blue">Awaiting Payment Verification</span>
+                <span class="badge badge-blue">Awaiting Admin Approval</span>
                 {% endif %}
                 {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
                 {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
@@ -223,6 +247,8 @@
               <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting staff approval</span>
               {% elif p.stage == 'awaiting_payment' %}
               <span class="badge badge-muted" style="align-self:center;">⏳ Awaiting payment from member</span>
+              {% elif p.stage == 'verify_cash' %}
+              <span class="badge badge-muted" style="align-self:center;">⏳ Confirmed by front-desk staff</span>
               {% else %}
               <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Confirm Payment</button>
               <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
@@ -243,12 +269,12 @@
             <tr>
               <td>#{{ p.txn }}</td>
               <td>{{ p.member_name }}{% if p.is_student %} <span class="badge badge-gold" style="margin-left:4px;">🎓</span>{% endif %}{% if p.wants_coach %} <span class="badge badge-green" style="margin-left:4px;" title="Coach: {{ p.coach_name }}">🏋</span>{% endif %}</td>
-              <td>{{ p.plan }}</td><td>{{ p.method }}</td><td>₱{{ p.amount }}</td><td>{{ p.date }}</td>
+              <td>{{ p.plan }}</td><td>{{ '' if p.method.startswith('Pending') else p.method }}</td><td>₱{{ p.amount }}</td><td>{{ p.date }}</td>
               <td>
                 {% if p.status == 'verified' %}
                 <span class="badge badge-green">Approved</span>
                 {% else %}
-                <span class="badge badge-red">Rejected</span>
+                <span class="badge badge-red">Declined</span>
                 {% endif %}
               </td>
             </tr>
