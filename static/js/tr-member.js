@@ -575,6 +575,7 @@ const MemberModule = (() => {
       price: '₱100',
       subtitle: 'Single-day access — up to 2 hours, great for drop-ins',
       items: [
+        'All Access to Gym equipment for 1 day (up to 2 hours per visit)',
         'Gym floor access for up to 2 hours on your visit day',
         'Use of all cardio and strength equipment',
         'Locker use during your visit',
@@ -587,6 +588,7 @@ const MemberModule = (() => {
       price: '₱450',
       subtitle: '2 weeks of unlimited access, any time, every day',
       items: [
+        'All Access to Gym equipment for 14 days',
         'Unlimited-length visits, any time, every day for 14 days',
         'No 2-hour cap — stay as long as you like per visit',
         'Attendance tracking in your dashboard',
@@ -600,6 +602,7 @@ const MemberModule = (() => {
       price: '₱900',
       subtitle: '1 month of unlimited access, any time, every day',
       items: [
+        'All Access to Gym equipment for 30 days',
         'Unlimited-length visits, any time, every day for 30 days',
         'Attendance & Body Goals tracking in your dashboard',
         'Eligible to request a coach (Ronel Samar or Jonathan Natividad)',
@@ -612,6 +615,7 @@ const MemberModule = (() => {
       price: '₱7,000',
       subtitle: '1 year of unlimited access, any time, every day',
       items: [
+        'All Access to Gym equipment for 365 days',
         'Unlimited-length visits, any time, every day for 365 days',
         '2 free personal coaching sessions',
         'Members-only yearly gear kit',
