@@ -429,6 +429,76 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _otp_email_html(first_name, otp):
+    """Styled HTML version of the password-reset OTP email (POWER GYM branded)."""
+    digits_html = ''.join(
+        f'<td style="padding:0 6px;"><div style="width:44px;height:52px;background:#1a1d24;'
+        f'border:1px solid #2e3545;border-radius:8px;color:#f5f5f7;font-family:Arial,Helvetica,sans-serif;'
+        f'font-size:26px;font-weight:700;line-height:52px;text-align:center;">{d}</div></td>'
+        for d in otp
+    )
+    return f"""\
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#050508;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#050508;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="420" cellpadding="0" cellspacing="0"
+               style="max-width:420px;width:100%;background:#141820;border:1px solid #2e3545;
+                      border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+          <tr>
+            <td style="background:linear-gradient(135deg,#e61e25,#b8141c);padding:22px 24px;text-align:center;">
+              <div style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:1px;">POWER GYM</div>
+              <div style="color:rgba(255,255,255,0.85);font-size:11px;letter-spacing:2px;margin-top:2px;">ACCOUNT RECOVERY</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px 8px 28px;text-align:center;">
+              <div style="width:64px;height:64px;margin:0 auto 18px auto;background:rgba(255,171,64,0.12);
+                          border-radius:50%;line-height:64px;font-size:28px;">✉️</div>
+              <div style="color:#f5f5f7;font-size:18px;font-weight:700;margin-bottom:6px;">Your Verification Code</div>
+              <div style="color:#8b92a8;font-size:13px;line-height:1.6;margin-bottom:24px;">
+                Hi {first_name}, use the code below to reset your<br>POWER GYM account password.
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px;text-align:center;">
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                <tr>{digits_html}</tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 28px 6px 28px;text-align:center;">
+              <div style="color:#8b92a8;font-size:12px;">
+                This code expires in <strong style="color:#f5f5f7;">{OTP_VALID_MINUTES} minutes</strong>
+                and can be entered up to <strong style="color:#f5f5f7;">{OTP_MAX_ATTEMPTS} times</strong>.
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 28px 28px 28px;text-align:center;">
+              <div style="height:1px;background:#2e3545;margin-bottom:16px;"></div>
+              <div style="color:#565d70;font-size:11px;line-height:1.6;">
+                If you didn't request this code, you can safely ignore this email —
+                your password will not be changed.
+              </div>
+            </td>
+          </tr>
+        </table>
+        <div style="color:#565d70;font-size:11px;margin-top:18px;font-family:Arial,Helvetica,sans-serif;">
+          © Power Gym. This is an automated message, please do not reply.
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
+
+
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
@@ -464,6 +534,7 @@ def forgot_password():
                             f"{OTP_MAX_ATTEMPTS} times before you'll need to request a new one.\n\n"
                             f"If you didn't request this, you can safely ignore this email."
                         ),
+                        html=_otp_email_html(user.first_name, otp),
                     )
                     mail.send(msg)
                     flash('A verification code has been sent to your email.', 'success')
