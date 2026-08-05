@@ -37,7 +37,7 @@ const MemberModule = (() => {
 
     const memberData = _parseMemberDashboardData();
     attendanceView = { year: memberData.year || null, month: memberData.month || null };
-    buildAttGrid('att-grid-member', memberData.present_days || [], memberData.days_in_month || 30, memberData.today_day || null);
+    buildAttGrid('att-grid-member', memberData.present_days || [], memberData.days_in_month || 30, memberData.today_day || null, memberData.no_plan_days || []);
     _updateAttendanceNav(memberData.today_day != null);
     _hydrateProgressBars();
     _bindModalBackdrops();
@@ -79,7 +79,7 @@ const MemberModule = (() => {
     if (!notice) return;
     const msgEl = document.getElementById('payment-approved-message');
     if (msgEl) {
-      msgEl.textContent = `You have successfully paid your ${notice.plan_name} membership plan! Your membership starts on ${notice.start_date}.`;
+      msgEl.textContent = `Congratulations! Your payment has been approved. Your ${notice.plan_name} membership plan starts on ${notice.start_date}.`;
     }
     openModal('payment-approved-modal');
   }
@@ -167,7 +167,7 @@ const MemberModule = (() => {
         attendanceView = { year: data.year, month: data.month };
         const label = document.getElementById('attendance-month-label');
         if (label) label.textContent = data.month_label;
-        buildAttGrid('att-grid-member', data.present_days || [], data.days_in_month || 30, data.today_day || null);
+        buildAttGrid('att-grid-member', data.present_days || [], data.days_in_month || 30, data.today_day || null, data.no_plan_days || []);
         _renderAttendanceSessionHistory(data.session_history);
         if (prevBtn) prevBtn.disabled = false;
         _updateAttendanceNav(data.is_current_month);
@@ -211,15 +211,49 @@ const MemberModule = (() => {
   /** Show/hide the school ID upload field based on the student Yes/No dropdown */
   function toggleStudentIdField(select) {
     const group = document.getElementById('member-student-id-group');
-    if (!group) return;
-    const isStudent = select?.value === 'yes';
-    group.style.display = isStudent ? 'block' : 'none';
-    if (!isStudent) {
-      const input   = document.getElementById('member-student-id');
-      const preview = document.getElementById('member-student-id-preview');
-      if (input) input.value = '';
-      if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+    if (group) {
+      const isStudent = select?.value === 'yes';
+      group.style.display = isStudent ? 'block' : 'none';
+      if (!isStudent) {
+        const input   = document.getElementById('member-student-id');
+        const preview = document.getElementById('member-student-id-preview');
+        if (input) input.value = '';
+        if (preview) { preview.style.display = 'none'; preview.removeAttribute('src'); }
+      }
     }
+    _updatePlanPriceDisplays();
+  }
+
+  // ── Student discount pricing ──
+  // Daily has no listed student rate, so it's left out on purpose and just
+  // falls back to its normal price everywhere below.
+  const REGULAR_PRICES = { daily: 100, weekly: 450, monthly: 900, yearly: 7000 };
+  const STUDENT_PRICES = { weekly: 400, monthly: 800, yearly: 6000 };
+
+  function _formatPeso(n) { return '₱' + n.toLocaleString('en-US'); }
+
+  function _isStudentSelected() {
+    return document.getElementById('member-renew-student')?.value === 'yes';
+  }
+
+  /** Plain "₱N" text for a plan key, honoring student status. */
+  function _planPriceText(key, isStudent) {
+    const price = (isStudent && STUDENT_PRICES[key] !== undefined) ? STUDENT_PRICES[key] : REGULAR_PRICES[key];
+    return _formatPeso(price);
+  }
+
+  /** Refresh the price shown on each plan card — struck-through original
+   *  plus the discounted rate when the student toggle is set to Yes. */
+  function _updatePlanPriceDisplays() {
+    const isStudent = _isStudentSelected();
+    Object.keys(REGULAR_PRICES).forEach(key => {
+      const el = document.querySelector(`#member-membership .plan-card[onclick*="'${key}'"] .plan-price`);
+      if (!el) return;
+      const discounted = isStudent && STUDENT_PRICES[key] !== undefined;
+      el.innerHTML = discounted
+        ? `<span style="text-decoration:line-through;opacity:.55;font-size:0.65em;margin-right:4px;">${_formatPeso(REGULAR_PRICES[key])}</span>${_formatPeso(STUDENT_PRICES[key])}`
+        : _formatPeso(REGULAR_PRICES[key]);
+    });
   }
 
   /** Preview uploaded school ID image */
@@ -430,7 +464,10 @@ const MemberModule = (() => {
     const endEl   = document.getElementById('confirm-plan-end-date');
 
     if (nameEl)  nameEl.textContent  = info ? info.title.toUpperCase() : selectedPlan.toUpperCase();
-    if (priceEl) priceEl.textContent = info ? info.price : '';
+    if (priceEl) {
+      priceEl.textContent = _planPriceText(selectedPlan, p.isStudent);
+      priceEl.textContent += p.isStudent && STUDENT_PRICES[selectedPlan] !== undefined ? ' (student rate)' : '';
+    }
 
     const start = new Date(p.startDate + 'T00:00:00');
     if (dateEl) {
@@ -554,6 +591,7 @@ const MemberModule = (() => {
         'No 2-hour cap — stay as long as you like per visit',
         'Attendance tracking in your dashboard',
         'Access to Boxing, Strengthening, Weight Loss & Cardio Zone',
+        'Student discount available with a valid school ID',
         'Great for short-term visitors or a trial run',
       ],
     },
@@ -579,6 +617,7 @@ const MemberModule = (() => {
         'Members-only yearly gear kit',
         'Price locked for the entire year — no rate increases',
         'Attendance & Body Goals tracking in your dashboard',
+        'Student discount available with a valid school ID',
       ],
     },
   };
@@ -596,7 +635,7 @@ const MemberModule = (() => {
     const list     = document.getElementById('plan-modal-list');
 
     if (title)    title.textContent = info.title.toUpperCase();
-    if (price)    price.textContent = info.price;
+    if (price)    price.textContent = _planPriceText(key, _isStudentSelected());
     if (subtitle) subtitle.textContent = info.subtitle;
     if (list)     list.innerHTML = info.items.map(i => `<li>${i}</li>`).join('');
 

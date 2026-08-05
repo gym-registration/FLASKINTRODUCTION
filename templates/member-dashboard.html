@@ -281,6 +281,9 @@
             <div>
               <div style="font-family:'Bebas Neue';font-size:28px;color:var(--red);">{{ awaiting_approval.plan_name|upper }} PLAN</div>
               <div style="font-size:12px;color:var(--muted);">Requested start: {{ awaiting_approval.start_date }}</div>
+              {% if awaiting_approval.is_student %}
+              <div style="font-size:11px;color:var(--gold);margin-top:4px;">🎓 Student discount applied</div>
+              {% endif %}
             </div>
             <div style="font-family:'Bebas Neue';font-size:32px;color:var(--white);">₱{{ awaiting_approval.amount }}</div>
           </div>
@@ -300,6 +303,9 @@
             <div>
               <div style="font-family:'Bebas Neue';font-size:28px;color:var(--red);">{{ pending_payment.plan_name|upper }} PLAN</div>
               <div style="font-size:12px;color:var(--muted);">Requested start: {{ pending_payment.start_date }}</div>
+              {% if pending_payment.is_student %}
+              <div style="font-size:11px;color:var(--gold);margin-top:4px;">🎓 Student discount applied</div>
+              {% endif %}
             </div>
             <div style="font-family:'Bebas Neue';font-size:32px;color:var(--white);">₱{{ pending_payment.amount }}</div>
           </div>
@@ -360,7 +366,7 @@
             {% for p in payment_history %}
             <tr>
               <td>{{ p.date }}</td>
-              <td>{{ p.plan }}</td>
+              <td>{{ p.plan }}{% if p.is_student %} <span class="badge badge-gold" style="margin-left:4px;" title="Student discount applied">🎓</span>{% endif %}</td>
               <td>₱{{ p.amount }}</td>
               <td>{{ '' if p.method.startswith('Pending') else p.method }}</td>
               <td>{{ p.reference }}</td>
@@ -806,7 +812,7 @@
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
-<script id="member-dashboard-data" type="application/json">{{ {'present_days': present_days, 'days_in_month': days_in_month, 'today_day': today_day, 'year': attendance_year, 'month': attendance_month, 'plan_approved_notice': plan_approved_notice, 'payment_verified_notice': payment_verified_notice, 'plan_declined_notice': plan_declined_notice}|tojson }}</script>
+<script id="member-dashboard-data" type="application/json">{{ {'present_days': present_days, 'no_plan_days': no_plan_days, 'days_in_month': days_in_month, 'today_day': today_day, 'year': attendance_year, 'month': attendance_month, 'plan_approved_notice': plan_approved_notice, 'payment_verified_notice': payment_verified_notice, 'plan_declined_notice': plan_declined_notice}|tojson }}</script>
 <script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tr-member.js') }}"></script>
 </body>

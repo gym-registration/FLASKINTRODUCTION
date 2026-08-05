@@ -2,10 +2,12 @@ import os
 import secrets
 import string
 import calendar
+import csv
+import io
 from dotenv import load_dotenv
 load_dotenv()  # Reads variables from a .env file in the project root, if present
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from flask_mail import Mail, Message
@@ -63,6 +65,25 @@ def _plan_expiry(plan, start_date):
     return start_date + timedelta(days=duration_days)
 
 
+# Discounted prices for students with a verified school ID. Daily is not
+# discounted (it's not listed in the promo), so it's left out on purpose —
+# any plan not in this table just falls back to its normal price.
+STUDENT_PLAN_PRICES = {
+    'Weekly':  400.0,
+    'Monthly': 800.0,
+    'Yearly':  6000.0,
+}
+
+
+def _plan_amount(plan, is_student):
+    """The amount to actually charge for a plan, applying the student
+    discount when applicable. Falls back to the plan's normal price for
+    plans with no listed student rate (e.g. Daily) or for non-students."""
+    if plan and is_student and plan.name in STUDENT_PLAN_PRICES:
+        return STUDENT_PLAN_PRICES[plan.name]
+    return plan.price if plan else 0.0
+
+
 def _manila_day_bounds_utc(day):
     """Given a Philippines calendar date, return the (start, end) naive UTC
     datetimes bounding that local day — for filtering DB columns that are
@@ -99,6 +120,23 @@ def _get_member_attendance_month(user_id, year, month):
 
     present_days = sorted({_to_manila(a.check_in).day for a in attendance_rows})
 
+    # ── Days the member had no active membership plan at all — these should
+    #    stay neutral on the calendar (not red) since there was nothing to
+    #    check in for. A day counts as "plan-covered" only if it falls within
+    #    the member's current membership start_date..expiry_date range. ──
+    membership = Membership.query.filter_by(member_id=user_id).first()
+    no_plan_days = []
+    for d in range(1, days_in_month + 1):
+        day_date = date(year, month, d)
+        has_plan = (
+            membership is not None
+            and membership.start_date is not None
+            and membership.expiry_date is not None
+            and membership.start_date <= day_date <= membership.expiry_date
+        )
+        if not has_plan:
+            no_plan_days.append(d)
+
     session_history = []
     for a in attendance_rows[:10]:
         duration_text = '—'
@@ -125,6 +163,7 @@ def _get_member_attendance_month(user_id, year, month):
         'today_day': today.day if is_current_month else None,
         'is_current_month': is_current_month,
         'present_days': present_days,
+        'no_plan_days': no_plan_days,
         'session_history': session_history,
     }
 
@@ -853,6 +892,15 @@ def admin_verify_payment(payment_id):
             db.session.commit()
             return jsonify(success=True, message='Plan request rejected.', status='rejected')
 
+        # Staff reviews the uploaded school ID (if any) at this stage and has
+        # the final say on student status — the member's self-reported
+        # checkbox at request time is just a starting point. Whatever staff
+        # confirms here becomes the amount actually charged.
+        if 'is_student' in data:
+            confirmed_student = (data.get('is_student') or '').strip().lower() in ('1', 'true', 'yes')
+            payment.is_student = confirmed_student
+            payment.amount     = _plan_amount(payment.plan, confirmed_student)
+
         payment.status = 'approved'
         payment.method = 'Pending — choose payment method'
         payment.notified = False
@@ -897,6 +945,19 @@ def admin_verify_payment(payment_id):
     today  = _today_manila()
 
     membership = Membership.query.filter_by(member_id=member.id).first()
+
+    # Only an already-ACTIVE membership represents real remaining time worth
+    # stacking a renewal on top of. A 'pending' membership's expiry_date is
+    # just a preview computed when the request was first submitted (before
+    # staff/admin ever approved it) — treating that as "existing unexpired
+    # time" here would double-count the plan's duration on top of itself.
+    was_active_with_time = (
+        membership is not None
+        and membership.status == 'active'
+        and membership.expiry_date is not None
+        and membership.expiry_date > today
+    )
+
     if membership is None:
         membership = Membership(
             member_id=member.id,
@@ -908,13 +969,13 @@ def admin_verify_payment(payment_id):
         db.session.add(membership)
 
     # If the member requested a future start date and doesn't already have
-    # unexpired time on their account, honor that date instead of "today".
+    # unexpired time on an active plan, honor that date instead of "today".
     requested_start = payment.requested_start_date
-    if requested_start and (not membership.expiry_date or membership.expiry_date <= today):
-        base_date = requested_start if requested_start > today else today
-        membership.start_date = base_date
+    if was_active_with_time:
+        base_date = membership.expiry_date
     else:
-        base_date = membership.expiry_date if membership.expiry_date and membership.expiry_date > today else today
+        base_date = requested_start if (requested_start and requested_start > today) else today
+        membership.start_date = base_date
 
     membership.expiry_date = _plan_expiry(plan, base_date)
     if plan is not None:
@@ -1041,6 +1102,8 @@ def member_submit_payment():
     if plan is None:
         return jsonify(success=False, error='Selected plan is not available.'), 400
 
+    payment_amount = _plan_amount(plan, is_student)
+
     valid_coaches = {'Ronel Samar', 'Jonathan Natividad'}
     if wants_coach and coach_name not in valid_coaches:
         return jsonify(success=False, error='Please select a coach.'), 400
@@ -1075,7 +1138,7 @@ def member_submit_payment():
     new_payment = Payment(
         member_id=user.id,
         plan_id=plan.id,
-        amount=plan.price,
+        amount=payment_amount,
         method='Pending — awaiting staff approval',
         reference_number=None,
         proof_image_path=None,
@@ -1207,27 +1270,59 @@ def staff_record_payment():
         # own submission + Admin verification flow, not this manual form.
         return jsonify(success=False, error='This form only records Cash payments. GCash payments are verified by Admin from the member\'s own submission.'), 400
 
-    new_payment = Payment(
-        member_id=member.id,
-        plan_id=plan.id,
-        amount=plan.price,
-        method=method,
-        status='verified',
-        recorded_by_id=session.get('user_id'),
-        verified_at=datetime.now(timezone.utc),
+    # If this member already has an in-progress request (plan request awaiting
+    # approval, or a payment awaiting verification), settle that same record
+    # instead of leaving it stale — so it disappears from Pending Requests
+    # once staff records the payment here.
+    existing_request = (
+        Payment.query
+        .filter(Payment.member_id == member.id, Payment.status.in_(['pending', 'approved']))
+        .order_by(Payment.paid_at.desc())
+        .first()
     )
-    db.session.add(new_payment)
+    if existing_request is not None:
+        existing_request.plan_id = plan.id
+        existing_request.amount = _plan_amount(plan, existing_request.is_student)
+        existing_request.method = method
+        existing_request.status = 'verified'
+        existing_request.recorded_by_id = session.get('user_id')
+        existing_request.verified_at = datetime.now(timezone.utc)
+        existing_request.notified = False  # let the member see a fresh "payment approved!" popup
+        new_payment = existing_request
+    else:
+        new_payment = Payment(
+            member_id=member.id,
+            plan_id=plan.id,
+            amount=plan.price,
+            method=method,
+            status='verified',
+            recorded_by_id=session.get('user_id'),
+            verified_at=datetime.now(timezone.utc),
+        )
+        db.session.add(new_payment)
 
     # Extend (or create) the member's membership, starting from whichever is later:
     # today, or their current expiry date (so early renewals stack on top of remaining time).
     today = _today_manila()
     membership = Membership.query.filter_by(member_id=member.id).first()
+
+    # Only stack on top of an already-ACTIVE membership's remaining time. A
+    # 'pending' membership's expiry_date is just a preview computed when the
+    # plan request was first submitted — stacking on that would double-count
+    # the plan's duration on top of itself.
+    was_active_with_time = (
+        membership is not None
+        and membership.status == 'active'
+        and membership.expiry_date is not None
+        and membership.expiry_date > today
+    )
+
     if membership is None:
         membership = Membership(member_id=member.id, plan_id=plan.id, start_date=today,
                                  expiry_date=today, status='active')
         db.session.add(membership)
 
-    base_date = membership.expiry_date if membership.expiry_date and membership.expiry_date > today else today
+    base_date = membership.expiry_date if was_active_with_time else today
     membership.plan_id     = plan.id
     membership.expiry_date = _plan_expiry(plan, base_date)
     membership.status      = 'active'
@@ -1475,6 +1570,7 @@ def member():
     current_month_data = _get_member_attendance_month(user.id, today.year, today.month)
     days_in_month   = current_month_data['days_in_month']
     present_days    = current_month_data['present_days']
+    no_plan_days    = current_month_data['no_plan_days']
     session_history = current_month_data['session_history']
     today_day       = current_month_data['today_day']
 
@@ -1504,6 +1600,7 @@ def member():
         'method':    p.method,
         'reference': p.reference_number or '—',
         'status':    p.status,
+        'is_student': p.is_student,
     } for p in payment_rows]
 
     # ── Awaiting approval (plan request submitted, staff/admin hasn't
@@ -1520,6 +1617,7 @@ def member():
             'plan_name':  awaiting_approval_row.plan.name if awaiting_approval_row.plan else '—',
             'amount':     f'{float(awaiting_approval_row.amount):,.2f}',
             'start_date': awaiting_approval_row.requested_start_date.strftime('%b %d, %Y') if awaiting_approval_row.requested_start_date else '—',
+            'is_student': awaiting_approval_row.is_student,
         }
 
     # ── Pending payment (plan already approved by staff/admin — drives the
@@ -1539,6 +1637,7 @@ def member():
             'needs_method': pending_payment_row.method.startswith('Pending'),
             'method':      pending_payment_row.method,
             'reference':   pending_payment_row.reference_number,
+            'is_student':  pending_payment_row.is_student,
         }
 
     # ── Just-approved notice (shown once as a "Congratulations! Proceed to
@@ -1612,6 +1711,7 @@ def member():
         plan=current_plan,
         plan_active=plan_active,
         present_days=present_days,
+        no_plan_days=no_plan_days,
         days_in_month=days_in_month,
         today_day=today_day,
         month_label=today.strftime('%B %Y'),
@@ -1832,6 +1932,17 @@ def staff():
         'expiring_soon':    len(expiring_soon),
     }
 
+    # ── Analytics tab: default to "This Month" on first load; the report
+    #    generation buttons let staff pick a different range and download
+    #    a CSV without needing a page reload. ──
+    analytics_start, analytics_end, analytics_range_label = _report_range('this_month')
+    analytics = {
+        'range_label': analytics_range_label,
+        'revenue':     _revenue_report(analytics_start, analytics_end),
+        'membership':  _membership_report(),
+        'attendance':  _attendance_report(analytics_start, analytics_end),
+    }
+
     # ── Lightweight member list for the Payment Record autocomplete/dropdown.
     #    Keyed by email (unique + always accepted by _find_member), with the
     #    member's current plan so the UI can auto-select the matching Plan
@@ -1855,7 +1966,217 @@ def staff():
         processed_requests=processed_requests,
         coach_assignments=coach_assignments,
         payment_members=payment_members,
+        analytics=analytics,
+        report_ranges=REPORT_RANGES,
         current_user=User.query.get(session['user_id']),
+    )
+
+
+def _format_currency_short(amount):
+    """Compact currency for tight stat-card display, e.g. 86000 -> '86K',
+    1250000 -> '1.3M', 950 -> '950'. Full precision is still available
+    elsewhere (Analytics tab, CSV exports)."""
+    amount = float(amount)
+    if abs(amount) >= 1_000_000:
+        return f'{amount / 1_000_000:.1f}'.rstrip('0').rstrip('.') + 'M'
+    if abs(amount) >= 1_000:
+        return f'{amount / 1_000:.1f}'.rstrip('0').rstrip('.') + 'K'
+    return f'{amount:,.0f}'
+
+
+REPORT_RANGES = {
+    'this_month': 'This Month',
+    'last_30':    'Last 30 Days',
+    'this_year':  'This Year',
+    'all_time':   'All Time',
+}
+
+
+def _report_range(range_key):
+    """Resolve a report range key into a (start_date, end_date, label) tuple.
+    end_date is always today; start_date is None for 'all_time' (no lower bound)."""
+    today = _today_manila()
+    if range_key == 'last_30':
+        return today - timedelta(days=29), today, REPORT_RANGES['last_30']
+    if range_key == 'this_year':
+        return date(today.year, 1, 1), today, REPORT_RANGES['this_year']
+    if range_key == 'all_time':
+        return None, today, REPORT_RANGES['all_time']
+    return date(today.year, today.month, 1), today, REPORT_RANGES['this_month']
+
+
+def _revenue_report(start_date, end_date):
+    """Verified payments within range: totals, a breakdown per plan, and a
+    breakdown of Cash payments by the staff member who recorded them (so
+    front-desk cash collected by each staff member is visible at a glance)."""
+    q = Payment.query.filter(Payment.status == 'verified')
+    if start_date is not None:
+        q = q.filter(Payment.paid_at >= datetime.combine(start_date, datetime.min.time()))
+    q = q.filter(Payment.paid_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
+    rows = q.order_by(Payment.paid_at.desc()).all()
+
+    total = sum((r.amount for r in rows), start=0)
+    by_plan = {}
+    for r in rows:
+        plan_name = r.plan.name if r.plan else 'Unknown'
+        by_plan[plan_name] = by_plan.get(plan_name, 0) + float(r.amount)
+
+    # Cash collected, grouped by the staff member who recorded it.
+    cash_by_staff = {}
+    cash_total = 0.0
+    for r in rows:
+        if r.method != 'Cash':
+            continue
+        cash_total += float(r.amount)
+        staff_name = r.recorded_by.full_name if r.recorded_by else 'Unrecorded / Unknown'
+        entry = cash_by_staff.setdefault(staff_name, {'total': 0.0, 'count': 0})
+        entry['total'] += float(r.amount)
+        entry['count'] += 1
+
+    return {
+        'total_revenue':   f'{float(total):,.2f}',
+        'transaction_count': len(rows),
+        'by_plan': [{'plan': k, 'total': f'{v:,.2f}'} for k, v in sorted(by_plan.items(), key=lambda kv: -kv[1])],
+        'cash_total': f'{cash_total:,.2f}',
+        'cash_by_staff': [
+            {'staff': k, 'total': f'{v["total"]:,.2f}', 'count': v['count']}
+            for k, v in sorted(cash_by_staff.items(), key=lambda kv: -kv[1]['total'])
+        ],
+        'rows': rows,
+    }
+
+
+def _membership_report():
+    """Snapshot of every member's current status, plus new signups this month."""
+    members = _get_members_with_plans()
+    counts = {'Active': 0, 'Pending': 0, 'Expired': 0, 'Declined': 0, 'No Plan': 0}
+    for m in members:
+        counts[m['status']] = counts.get(m['status'], 0) + 1
+
+    today = _today_manila()
+    month_start = datetime.combine(date(today.year, today.month, 1), datetime.min.time())
+    new_this_month = User.query.filter(User.role == 'member', User.created_at >= month_start).count()
+
+    return {
+        'total_members': len(members),
+        'counts': counts,
+        'new_this_month': new_this_month,
+        'members': members,
+    }
+
+
+def _attendance_report(start_date, end_date):
+    """Check-ins within range: totals, unique members, and average visit duration."""
+    start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+    end_dt   = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+
+    q = Attendance.query.filter(Attendance.check_in < end_dt)
+    if start_dt is not None:
+        q = q.filter(Attendance.check_in >= start_dt)
+    rows = q.order_by(Attendance.check_in.desc()).all()
+
+    unique_members = len({r.member_id for r in rows})
+    completed = [r for r in rows if r.check_out is not None]
+    avg_minutes = int(sum(
+        (r.duration_min if r.duration_min is not None else int((r.check_out - r.check_in).total_seconds() // 60))
+        for r in completed
+    ) / len(completed)) if completed else 0
+
+    return {
+        'total_checkins':  len(rows),
+        'unique_members':  unique_members,
+        'avg_duration_min': avg_minutes,
+        'rows': rows,
+    }
+
+
+def _csv_response(filename, header, row_iter):
+    """Build a downloadable CSV Response from a header row and an iterable of rows."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    for row in row_iter:
+        writer.writerow(row)
+    return Response(
+        buf.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+@app.route('/staff/reports/revenue.csv')
+def staff_report_revenue_csv():
+    if session.get('role') not in ('staff', 'admin'):
+        return redirect(url_for('login'))
+    range_key = request.args.get('range', 'this_month')
+    start_date, end_date, label = _report_range(range_key)
+    report = _revenue_report(start_date, end_date)
+
+    def rows():
+        for p in report['rows']:
+            yield [
+                f'TXN-{9000 + p.id}',
+                p.member.full_name if p.member else '—',
+                p.plan.name if p.plan else '—',
+                p.method,
+                f'{float(p.amount):,.2f}',
+                _to_manila(p.paid_at).strftime('%Y-%m-%d'),
+                p.recorded_by.full_name if p.recorded_by else '—',
+            ]
+
+    return _csv_response(
+        f'revenue-report-{range_key}.csv',
+        ['Txn#', 'Member', 'Plan', 'Method', 'Amount (₱)', 'Date', 'Recorded By'],
+        rows(),
+    )
+
+
+@app.route('/staff/reports/membership.csv')
+def staff_report_membership_csv():
+    if session.get('role') not in ('staff', 'admin'):
+        return redirect(url_for('login'))
+    report = _membership_report()
+
+    def rows():
+        for m in report['members']:
+            yield [m['name'], m['email'], m['plan'], m['expiry'], m['status']]
+
+    return _csv_response(
+        'membership-report.csv',
+        ['Name', 'Email', 'Plan', 'Expiry', 'Status'],
+        rows(),
+    )
+
+
+@app.route('/staff/reports/attendance.csv')
+def staff_report_attendance_csv():
+    if session.get('role') not in ('staff', 'admin'):
+        return redirect(url_for('login'))
+    range_key = request.args.get('range', 'this_month')
+    start_date, end_date, label = _report_range(range_key)
+    report = _attendance_report(start_date, end_date)
+
+    def rows():
+        for a in report['rows']:
+            check_in_m  = _to_manila(a.check_in)
+            check_out_m = _to_manila(a.check_out) if a.check_out else None
+            duration_text = '—'
+            if a.check_out:
+                mins = a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
+                h, m = divmod(mins, 60)
+                duration_text = f'{h}h {m}m' if h else f'{m}m'
+            yield [
+                a.member.full_name if a.member else '—',
+                check_in_m.strftime('%Y-%m-%d'),
+                check_in_m.strftime('%I:%M %p').lstrip('0'),
+                check_out_m.strftime('%I:%M %p').lstrip('0') if check_out_m else '—',
+                duration_text,
+            ]
+
+    return _csv_response(
+        f'attendance-report-{range_key}.csv',
+        ['Member', 'Date', 'Check-in', 'Check-out', 'Duration'],
+        rows(),
     )
 
 
@@ -1917,6 +2238,16 @@ def admin():
     attendance_today = _get_attendance_today()
     attendance_calendar = _get_attendance_calendar()
 
+    # ── Overview stat cards — real counts/totals, not placeholders ──
+    month_start, month_end, _ = _report_range('this_month')
+    monthly_revenue_report = _revenue_report(month_start, month_end)
+    stats = {
+        'total_members':   len(members),
+        'active_members':  len([m for m in members if m['status'] == 'Active']),
+        'checkins_today':  len(attendance_today),
+        'monthly_revenue': _format_currency_short(monthly_revenue_report['total_revenue'].replace(',', '')),
+    }
+
     # This list spans every in-progress stage: 'approval' (plan request
     # awaiting staff sign-off), 'awaiting_payment' (approved, member hasn't
     # chosen a method yet), 'verify_cash' (Cash — staff's job) and
@@ -1967,6 +2298,7 @@ def admin():
     return render_template(
         'admin-dashboard.html',
         members=members,
+        stats=stats,
         pending_payments=pending_payments,
         payment_history=payment_history,
         attendance_today=attendance_today,

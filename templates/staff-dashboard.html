@@ -52,6 +52,9 @@
       <div class="nav-item" id="nav-staff-notices" onclick="staffTab('notices',this)">
         <span class="nav-icon">📢</span> Notices
       </div>
+      <div class="nav-item" id="nav-staff-analytics" onclick="staffTab('analytics',this)">
+        <span class="nav-icon">📈</span> Analytics
+      </div>
     </nav>
 
     <div class="sidebar-footer">
@@ -161,9 +164,6 @@
           <div class="verify-card" data-payment-id="{{ p.id }}" style="margin-bottom:12px;">
             <div>
               <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
-              <div style="font-size:12px;color:var(--muted);">
-                {% if p.stage == 'approval' %}New plan request{% else %}{{ p.method }} · Ref: {{ p.reference }}{% endif %} · Txn: #{{ p.txn }} · ₱{{ p.amount }}
-              </div>
               <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
                 {% if p.stage == 'approval' %}
                 <span class="badge badge-blue">Awaiting Plan Approval</span>
@@ -183,6 +183,12 @@
               <button class="btn btn-sm btn-outline" data-id-url="{{ url_for('static', filename=p.student_id_image_path) }}" onclick="viewPaymentProof(this.dataset.idUrl, 'School ID Proof')">🎓 View School ID</button>
               {% endif %}
               {% if p.stage == 'approval' %}
+              {% if p.plan in ('Weekly', 'Monthly', 'Yearly') %}
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);align-self:center;cursor:pointer;">
+                <input type="checkbox" class="verify-student-check" {% if p.is_student %}checked{% endif %}>
+                Confirm student discount
+              </label>
+              {% endif %}
               <button class="btn btn-sm btn-green" onclick="verifyPayment(this,'approve')">✓ Approve Plan</button>
               <button class="btn btn-sm" style="background:rgba(230,30,37,0.1);color:var(--red);border:1px solid rgba(230,30,37,0.2);" onclick="verifyPayment(this,'reject')">✗ Reject</button>
               {% elif p.stage == 'awaiting_payment' %}
@@ -203,13 +209,13 @@
       <div class="panel">
         <div class="panel-header"><div class="panel-title">Recently Processed</div></div>
         <table class="data-table">
-          <thead><tr><th>Txn#</th><th>Member</th><th>Plan</th><th>Method</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
+          <thead><tr><th>Txn#</th><th>Member</th><th>Plan</th><th>Date</th><th>Status</th></tr></thead>
           <tbody>
             {% for p in processed_requests %}
             <tr>
               <td>#{{ p.txn }}</td>
               <td>{{ p.member_name }}</td>
-              <td>{{ p.plan }}</td><td>{{ '' if p.method.startswith('Pending') else p.method }}</td><td>₱{{ p.amount }}</td><td>{{ p.date }}</td>
+              <td>{{ p.plan }}</td><td>{{ p.date }}</td>
               <td>
                 {% if p.status == 'verified' %}
                 <span class="badge badge-green">Approved</span>
@@ -219,7 +225,7 @@
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="7" style="text-align:center;color:var(--muted);">No requests processed yet.</td></tr>
+            <tr><td colspan="5" style="text-align:center;color:var(--muted);">No requests processed yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -351,6 +357,38 @@
     <!-- ── Record Payment ───────────────── -->
     <div id="staff-payments" class="sub-panel">
       <div class="page-header"><div><div class="page-title">PAYMENT RECORD</div><div class="page-subtitle">Log cash payments at the front desk</div></div></div>
+
+      {% if pending_requests %}
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Pending Requests</div></div>
+        <div class="panel-body">
+          {% for p in pending_requests %}
+          <div class="verify-card" style="margin-bottom:12px;">
+            <div>
+              <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
+              <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                {% if p.stage == 'approval' %}
+                <span class="badge badge-blue">Awaiting Plan Approval</span>
+                {% elif p.stage == 'awaiting_payment' %}
+                <span class="badge badge-gold">Approved — Awaiting Payment</span>
+                {% elif p.stage == 'verify_cash' %}
+                <span class="badge badge-blue">Awaiting Staff Approval</span>
+                {% else %}
+                <span class="badge badge-blue">Awaiting Admin Approval</span>
+                {% endif %}
+                {% if p.is_student %}<span class="badge badge-gold">🎓 Student</span>{% endif %}
+                {% if p.wants_coach %}<span class="badge badge-green">🏋 Coach: {{ p.coach_name }}</span>{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+            Record the payment below for a member on this list to clear their request automatically.
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="panel">
         <div class="panel-header"><div class="panel-title">New Payment Entry</div></div>
         <div class="panel-body">
@@ -386,7 +424,7 @@
               Front-desk entries are Cash only. GCash payments are submitted by the member and verified by Admin.
             </div>
           </div>
-          <button class="btn btn-red" onclick="recordPayment()">RECORD PAYMENT</button>
+          <button class="btn btn-red" onclick="promptRecordPayment()">RECORD PAYMENT</button>
         </div>
       </div>
     </div><!-- /staff-payments -->
@@ -407,6 +445,90 @@
         </div>
       </div>
     </div><!-- /staff-notices -->
+
+    <!-- ── Analytics ─────────────────────── -->
+    <div id="staff-analytics" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">ANALYTICS</div><div class="page-subtitle">Revenue, membership, and attendance reports — {{ analytics.range_label }}</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">💰 Revenue Report</div></div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
+            <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value" style="color:var(--green);">₱{{ analytics.revenue.total_revenue }}</div></div>
+            <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value">{{ analytics.revenue.transaction_count }}</div></div>
+            <div class="stat-card"><div class="stat-label">Cash Collected</div><div class="stat-value" style="color:var(--gold);">₱{{ analytics.revenue.cash_total }}</div></div>
+          </div>
+          <div class="panel-title" style="font-size:14px;margin-bottom:8px;">By Plan</div>
+          <table class="data-table" style="margin-bottom:20px;">
+            <thead><tr><th>Plan</th><th>Revenue</th></tr></thead>
+            <tbody>
+              {% for r in analytics.revenue.by_plan %}
+              <tr><td>{{ r.plan }}</td><td>₱{{ r.total }}</td></tr>
+              {% else %}
+              <tr><td colspan="2" style="text-align:center;color:var(--muted);">No revenue recorded for this period.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="panel-title" style="font-size:14px;margin-bottom:8px;">💵 Cash Recorded by Staff</div>
+          <table class="data-table">
+            <thead><tr><th>Staff</th><th>Cash Payments</th><th>Total Collected</th></tr></thead>
+            <tbody>
+              {% for s in analytics.revenue.cash_by_staff %}
+              <tr><td>{{ s.staff }}</td><td>{{ s.count }}</td><td>₱{{ s.total }}</td></tr>
+              {% else %}
+              <tr><td colspan="3" style="text-align:center;color:var(--muted);">No cash payments recorded for this period.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap;">
+            <select class="form-input" id="revenue-report-range" style="max-width:200px;">
+              {% for key, label in report_ranges.items() %}
+              <option value="{{ key }}" {% if key == 'this_month' %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-red" onclick="generateReport('revenue')">GENERATE REPORT</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">👥 Membership Report</div></div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
+            <div class="stat-card"><div class="stat-label">Total Members</div><div class="stat-value">{{ analytics.membership.total_members }}</div></div>
+            <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" style="color:var(--green);">{{ analytics.membership.counts['Active'] }}</div></div>
+            <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" style="color:var(--gold);">{{ analytics.membership.counts['Pending'] }}</div></div>
+            <div class="stat-card"><div class="stat-label">Expired</div><div class="stat-value" style="color:var(--red);">{{ analytics.membership.counts['Expired'] }}</div></div>
+            <div class="stat-card"><div class="stat-label">No Plan</div><div class="stat-value">{{ analytics.membership.counts['No Plan'] }}</div></div>
+            <div class="stat-card"><div class="stat-label">New This Month</div><div class="stat-value" style="color:var(--blue);">{{ analytics.membership.new_this_month }}</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-red" onclick="generateReport('membership')">GENERATE REPORT</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">✅ Attendance Report</div></div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
+            <div class="stat-card"><div class="stat-label">Total Check-ins</div><div class="stat-value">{{ analytics.attendance.total_checkins }}</div></div>
+            <div class="stat-card"><div class="stat-label">Unique Members</div><div class="stat-value">{{ analytics.attendance.unique_members }}</div></div>
+            <div class="stat-card"><div class="stat-label">Avg. Visit Duration</div><div class="stat-value">{{ analytics.attendance.avg_duration_min }}m</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <select class="form-input" id="attendance-report-range" style="max-width:200px;">
+              {% for key, label in report_ranges.items() %}
+              <option value="{{ key }}" {% if key == 'this_month' %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-red" onclick="generateReport('attendance')">GENERATE REPORT</button>
+          </div>
+        </div>
+      </div>
+    </div><!-- /staff-analytics -->
 
     <!-- ── Settings ─────────────────────── -->
     <div id="staff-settings" class="sub-panel">
@@ -519,6 +641,36 @@
         <a id="proof-modal-pdf-link" href="#" target="_blank" class="btn btn-red" style="display:inline-block;">OPEN PDF</a>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirm-record-payment-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="cancelRecordPayment()">✕</button>
+    <div class="modal-title" style="text-align:center;">CONFIRM PAYMENT</div>
+    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
+      Are you sure you want to record this payment?
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="cancelRecordPayment()">NO</button>
+      <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="confirmRecordPayment()">YES</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="payment-recorded-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closePaymentRecordedModal()">✕</button>
+    <div style="display:flex;justify-content:center;margin-bottom:14px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);display:flex;align-items:center;justify-content:center;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+    <div class="modal-title" style="text-align:center;">PAYMENT RECORDED</div>
+    <div id="payment-recorded-message" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 22px;">
+      Payment successfully recorded.
+    </div>
+    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closePaymentRecordedModal()">OK</button>
   </div>
 </div>
 

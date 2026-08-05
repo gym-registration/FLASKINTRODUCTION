@@ -52,9 +52,6 @@
       <div class="nav-item" id="nav-admin-staffmgmt" onclick="adminTab('staffmgmt',this)">
         <span class="nav-icon">🔑</span> Staff Accounts
       </div>
-      <div class="nav-item" id="nav-admin-settings" onclick="adminTab('settings',this)">
-        <span class="nav-icon">⚙️</span> Settings
-      </div>
     </nav>
 
     <div class="sidebar-footer">
@@ -65,7 +62,7 @@
           <div class="user-email" id="sidebar-user-email">{{ current_user.email if current_user else 'admin@powergym.com' }}</div>
         </div>
       </div>
-      <button class="btn-change-pass" onclick="adminTab('settings', document.getElementById('nav-admin-settings'))">⚙️ SETTINGS</button>
+      <button class="btn-change-pass" onclick="adminTab('settings', this)">⚙️ SETTINGS</button>
       <button class="btn-logout" onclick="doLogout()">⏻ SIGN OUT</button>
     </div>
   </div><!-- /sidebar -->
@@ -84,10 +81,10 @@
       </div>
 
       <div class="stats-grid">
-        <div class="stat-card red">  <span class="stat-icon">👥</span><div class="stat-value">248</div><div class="stat-label">Total Members</div></div>
-        <div class="stat-card green"><span class="stat-icon">✅</span><div class="stat-value">193</div><div class="stat-label">Active Members</div></div>
-        <div class="stat-card blue"> <span class="stat-icon">📋</span><div class="stat-value">67</div> <div class="stat-label">Check-ins Today</div></div>
-        <div class="stat-card gold"> <span class="stat-icon">💰</span><div class="stat-value">₱86K</div><div class="stat-label">Monthly Revenue</div></div>
+        <div class="stat-card red">  <span class="stat-icon">👥</span><div class="stat-value">{{ stats.total_members }}</div><div class="stat-label">Total Members</div></div>
+        <div class="stat-card green"><span class="stat-icon">✅</span><div class="stat-value">{{ stats.active_members }}</div><div class="stat-label">Active Members</div></div>
+        <div class="stat-card blue"> <span class="stat-icon">📋</span><div class="stat-value">{{ stats.checkins_today }}</div> <div class="stat-label">Check-ins Today</div></div>
+        <div class="stat-card gold"> <span class="stat-icon">💰</span><div class="stat-value">₱{{ stats.monthly_revenue }}</div><div class="stat-label">Monthly Revenue</div></div>
       </div>
 
       <div class="grid-2">

@@ -218,19 +218,23 @@ const Navigation = (() => {
 
 /** Build an attendance dot grid. totalDays defaults to 30 if not given
  *  (kept for backward compatibility with pages that don't pass it yet). */
-function buildAttGrid(elId, presentDays, totalDays = 30, todayDay = null) {
+function buildAttGrid(elId, presentDays, totalDays = 30, todayDay = null, noPlanDays = []) {
   const el = document.getElementById(elId);
   if (!el) return;
   el.innerHTML = '';
+  const noPlanSet = new Set(noPlanDays || []);
   for (let d = 1; d <= totalDays; d++) {
     const dot = document.createElement('div');
-    // A day that hasn't happened yet is neither "present" nor "absent" —
-    // it just hasn't occurred, so it gets its own neutral state instead of
-    // being lumped in with real absences (which would understate the
-    // member's actual attendance rate for the month so far).
+    // A day with no active membership plan at all stays neutral — there was
+    // nothing to check in for, so it shouldn't read as a missed day (red).
+    // Otherwise: a day that hasn't happened yet is neither "present" nor
+    // "absent" — it just hasn't occurred, so it gets its own neutral state
+    // instead of being lumped in with real absences.
     let state;
-    if (todayDay && d > todayDay) state = 'upcoming';
-    else state = presentDays.includes(d) ? 'present' : 'absent';
+    if (noPlanSet.has(d)) state = 'no-plan';
+    else if (presentDays.includes(d)) state = 'present';
+    else if (todayDay && d >= todayDay) state = 'upcoming';
+    else state = 'absent';
     dot.className  = 'att-dot ' + state;
     dot.textContent = d;
     el.appendChild(dot);
@@ -268,10 +272,18 @@ function verifyPayment(btn, action) {
   const buttons = card.querySelectorAll('button');
   buttons.forEach(b => b.disabled = true);
 
+  // If this card has a staff-facing "confirm student discount" checkbox
+  // (shown for Weekly/Monthly/Yearly plan requests awaiting plan approval),
+  // send its checked state so the backend can (re)apply the discount based
+  // on what staff actually confirmed, not just the member's self-report.
+  const studentCheck = card.querySelector('.verify-student-check');
+  const body = { action };
+  if (studentCheck) body.is_student = studentCheck.checked ? '1' : '0';
+
   fetch(`/admin/verify-payment/${paymentId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action })
+    body: JSON.stringify(body)
   })
     .then(res => res.json().then(data => ({ ok: res.ok, data })))
     .then(({ ok, data }) => {

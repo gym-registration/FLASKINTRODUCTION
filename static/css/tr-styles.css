@@ -912,8 +912,9 @@ select.form-input option:focus {
   cursor: default;
 }
 .att-dot.present  { background: rgba(34,197,94,0.2); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
-.att-dot.absent   { background: rgba(255,255,255,0.04); color: #333; border: 1px solid var(--border); }
+.att-dot.absent   { background: rgba(230,30,37,0.18); color: var(--red); border: 1px solid rgba(230,30,37,0.35); }
 .att-dot.upcoming { background: transparent; color: var(--muted); border: 1px dashed var(--border); opacity: 0.5; }
+.att-dot.no-plan  { background: rgba(255,255,255,0.04); color: #333; border: 1px solid var(--border); }
 
 /* ══════════════════════════════════
    10. Progress Bars

@@ -94,8 +94,12 @@ const StaffModule = (() => {
     _selectPlanByName(match.plan);
   }
 
-  /** Record a front-desk payment and persist it to the database */
-  function recordPayment() {
+  let _pendingRecordPayment = null;
+
+  /** "RECORD PAYMENT" button — validate the form, then ask for confirmation
+   *  before actually sending it (an accidental click shouldn't record a
+   *  real payment and extend someone's membership). */
+  function promptRecordPayment() {
     const memberIdentifier = _val('pay-member');
     const planText          = document.getElementById('pay-plan')?.value   || '';
     const method            = document.getElementById('pay-method')?.value || '';
@@ -106,6 +110,27 @@ const StaffModule = (() => {
       return;
     }
 
+    _pendingRecordPayment = { memberIdentifier, planName, method };
+    openModal('confirm-record-payment-modal');
+  }
+
+  /** "YES" inside the confirmation modal — actually records the payment. */
+  function confirmRecordPayment() {
+    closeModal('confirm-record-payment-modal');
+    if (!_pendingRecordPayment) return;
+    _doRecordPayment(_pendingRecordPayment);
+    _pendingRecordPayment = null;
+  }
+
+  /** "NO" (or the ✕) inside the confirmation modal — discards it and
+   *  returns to the Payment Record form, no changes made. */
+  function cancelRecordPayment() {
+    closeModal('confirm-record-payment-modal');
+    _pendingRecordPayment = null;
+  }
+
+  /** Record a front-desk payment and persist it to the database */
+  function _doRecordPayment({ memberIdentifier, planName, method }) {
     const btn = document.querySelector('#staff-payments .btn-red');
     if (btn) { btn.disabled = true; btn.textContent = 'RECORDING...'; }
 
@@ -131,12 +156,23 @@ const StaffModule = (() => {
         const planEl = document.getElementById('pay-plan');
         if (planEl) planEl.selectedIndex = 0;
 
-        showToast(`Payment recorded for ${data.payment.member_name} — membership active until ${data.payment.expiry}`, 'success');
+        const msgEl = document.getElementById('payment-recorded-message');
+        if (msgEl) {
+          msgEl.textContent = `Payment successfully recorded for ${data.payment.member_name} — membership active until ${data.payment.expiry}.`;
+        }
+        openModal('payment-recorded-modal');
       })
       .catch(() => {
         if (btn) { btn.disabled = false; btn.textContent = 'RECORD PAYMENT'; }
         showToast('Could not reach the server. Please try again.', 'error');
       });
+  }
+
+  /** "OK" on the payment-recorded modal — reload so the Pending Requests
+   *  list (shown here and on the Request tab) reflects the resolved request. */
+  function closePaymentRecordedModal() {
+    closeModal('payment-recorded-modal');
+    window.location.reload();
   }
 
   /** Resolve an argument that may be an <input>/<select> element id, or a raw
@@ -305,7 +341,17 @@ const StaffModule = (() => {
     openModal('view-proof-modal');
   }
 
-  return { init, tab, recordPayment, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput };
+  /** "GENERATE REPORT" buttons on the Analytics tab — download a CSV for the
+   *  selected report type and date range (Revenue/Attendance offer a range
+   *  picker; Membership is always a full current snapshot). */
+  function generateReport(reportType) {
+    const rangeEl = document.getElementById(`${reportType}-report-range`);
+    const range   = rangeEl ? rangeEl.value : 'this_month';
+    const query   = reportType === 'membership' ? '' : `?range=${encodeURIComponent(range)}`;
+    window.location.href = `/staff/reports/${reportType}.csv${query}`;
+  }
+
+  return { init, tab, promptRecordPayment, confirmRecordPayment, cancelRecordPayment, closePaymentRecordedModal, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput, generateReport };
 })();
 
 
@@ -318,7 +364,10 @@ document.addEventListener('DOMContentLoaded', () => {
   StaffModule.init();
 
   window.staffTab       = (tab, el) => StaffModule.tab(tab, el);
-  window.recordPayment  = () => StaffModule.recordPayment();
+  window.promptRecordPayment  = () => StaffModule.promptRecordPayment();
+  window.confirmRecordPayment = () => StaffModule.confirmRecordPayment();
+  window.cancelRecordPayment  = () => StaffModule.cancelRecordPayment();
+  window.closePaymentRecordedModal = () => StaffModule.closePaymentRecordedModal();
   window.checkInMember  = (idOrValue) => StaffModule.checkInMember(idOrValue);
   window.checkOutMember = (idOrValue) => StaffModule.checkOutMember(idOrValue);
   window.filterCheckinTable   = (term) => StaffModule.filterCheckinTable(term);
@@ -326,4 +375,5 @@ document.addEventListener('DOMContentLoaded', () => {
   window.filterMembersTable    = () => StaffModule.filterMembersTable();
   window.viewPaymentProof      = (url, title) => StaffModule.viewPaymentProof(url, title);
   window.onPayMemberInput      = (value) => StaffModule.onPayMemberInput(value);
+  window.generateReport        = (reportType) => StaffModule.generateReport(reportType);
 });
