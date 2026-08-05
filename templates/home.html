@@ -119,6 +119,21 @@
         </div>
       </div>
 
+      <div class="plan-tier">
+        <!-- TODO: swap for a dedicated Weekly Membership photo when available -->
+        <div class="plan-photo" style="background-image:url('{{ url_for('static', filename='images/facility-cardio.png') }}');"></div>
+        <div class="plan-tier-body">
+          <div class="plan-name">Weekly Membership</div>
+          <div class="plan-price">₱400 <span>/ week</span></div>
+          <div class="plan-desc">A short-term option for building a routine — full access for a full week.</div>
+          <ul class="plan-features">
+            <li>Gym EquipmentAccess</li>
+            <li>Gym Services</li>
+          </ul>
+          <a href="{{ url_for('login') }}?screen=register" class="btn btn-outline">JOIN NOW</a>
+        </div>
+      </div>
+
       <div class="plan-tier featured">
         <div class="plan-popular-tag">POPULAR</div>
         <!-- TODO: swap for a dedicated Monthly Membership photo when available -->
@@ -191,10 +206,10 @@
       <div class="section-title">OUR <span class="accent">FACILITIES</span></div>
     </div>
   <div class="facility-grid">
-  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-weight.png') }}"><span class="fi">🏋️</span><span class="label">Weight Area</span></div>
-  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-cardio.png') }}"><span class="fi">🏃</span><span class="label">Cardio Area</span></div>
-  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-functional.png') }}"><span class="fi">🤸</span><span class="label">Functional Training</span></div>
-  <div class="facility-tile" data-bg="{{ url_for('static', filename='images/facility-reception.png') }}"><span class="fi">🛎️</span><span class="label">Reception</span></div>
+  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-weight.png') }}');"><span class="fi">🏋️</span><span class="label">Weight Area</span></div>
+  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-cardio.png') }}');"><span class="fi">🏃</span><span class="label">Cardio Area</span></div>
+  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-functional.png') }}');"><span class="fi">🤸</span><span class="label">Functional Training</span></div>
+  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-reception.png') }}');"><span class="fi">🛎️</span><span class="label">Reception</span></div>
 </div>
   </div>
 </section>
