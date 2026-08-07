@@ -45,6 +45,7 @@ const StaffModule = (() => {
 
   function tab(tabName, navEl) {
     Navigation.activateTab('staff', tabName, navEl);
+    if (tabName === 'settings') ContentManager.ensureLoaded();
   }
 
   // ── Payment Record: member autocomplete + plan auto-fill ──

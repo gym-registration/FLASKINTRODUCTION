@@ -56,6 +56,7 @@ const AdminModule = (() => {
   /** Switch admin sub-panel */
   function tab(tabName, navEl) {
     Navigation.activateTab('admin', tabName, navEl);
+    if (tabName === 'settings') ContentManager.ensureLoaded();
   }
 
   /** Add a new member row from modal form */

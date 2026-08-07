@@ -104,68 +104,27 @@
       <div class="section-desc">Pick the plan that fits your routine. Upgrade or renew anytime from your member dashboard.</div>
     </div>
     <div class="plans-grid">
-      <div class="plan-tier">
-        <!-- TODO: swap for a dedicated Starter Plan photo when available -->
-        <div class="plan-photo" style="background-image:url('{{ url_for('static', filename='images/facility-cardio.png') }}');"></div>
+      {% for plan in plans %}
+      <div class="plan-tier{% if plan.name == 'Monthly' %} featured{% endif %}">
+        {% if plan.name == 'Monthly' %}<div class="plan-popular-tag">POPULAR</div>{% endif %}
+        <div class="plan-photo" style="background-image:url('{{ url_for('static', filename=plan.image_path) if plan.image_path else url_for('static', filename='images/facility-cardio.png') }}');"></div>
         <div class="plan-tier-body">
-          <div class="plan-name">Starter Plan</div>
-          <div class="plan-price">₱100 <span>/ day</span></div>
-          <div class="plan-desc">Perfect for a casual visit — walk in, train, and go, no commitment required.</div>
+          <div class="plan-name">{{ plan.name }}</div>
+          <div class="plan-price">₱{{ '{:,.0f}'.format(plan.price) if plan.price == plan.price|int else '{:,.2f}'.format(plan.price) }} <span>/ {{ plan.duration_days }} day{{ 's' if plan.duration_days != 1 else '' }}</span></div>
+          {% if plan.description %}<div class="plan-desc">{{ plan.description }}</div>{% endif %}
+          {% if plan.inclusions_list %}
           <ul class="plan-features">
-            <li>Gym EquipmentAccess</li>
-            <li>Gym Services</li>
-            
+            {% for item in plan.inclusions_list %}
+            <li>{{ item }}</li>
+            {% endfor %}
           </ul>
-          <a href="{{ url_for('login') }}?screen=register" class="btn btn-outline">JOIN NOW</a>
+          {% endif %}
+          <a href="{{ url_for('login') }}?screen=register" class="btn {{ 'btn-red' if plan.name == 'Monthly' else 'btn-outline' }}">JOIN NOW</a>
         </div>
       </div>
-
-      <div class="plan-tier">
-        <!-- TODO: swap for a dedicated Weekly Membership photo when available -->
-        <div class="plan-photo" style="background-image:url('{{ url_for('static', filename='images/facility-cardio.png') }}');"></div>
-        <div class="plan-tier-body">
-          <div class="plan-name">Weekly Membership</div>
-          <div class="plan-price">₱400 <span>/ week</span></div>
-          <div class="plan-desc">A short-term option for building a routine — full access for a full week.</div>
-          <ul class="plan-features">
-            <li>Gym EquipmentAccess</li>
-            <li>Gym Services</li>
-          </ul>
-          <a href="{{ url_for('login') }}?screen=register" class="btn btn-outline">JOIN NOW</a>
-        </div>
-      </div>
-
-      <div class="plan-tier featured">
-        <div class="plan-popular-tag">POPULAR</div>
-        <!-- TODO: swap for a dedicated Monthly Membership photo when available -->
-        <div class="plan-photo" style="background-image:url('{{ url_for('static', filename='images/facility-weight.png') }}');"></div>
-        <div class="plan-tier-body">
-          <div class="plan-name">Monthly Membership</div>
-          <div class="plan-price">₱900 <span>/ month</span></div>
-          <div class="plan-desc">Our most popular plan — unlimited visits with trainer support to keep you on track.</div>
-          <ul class="plan-features">
-            <li>Gym EquipmentAccess</li>
-            <li>Gym Services</li>
-          </ul>
-          <a href="{{ url_for('login') }}?screen=register" class="btn btn-red">JOIN NOW</a>
-        </div>
-      </div>
-
-      <div class="plan-tier">
-        <!-- TODO: swap for a dedicated Premium Membership photo when available -->
-        <div class="plan-photo" style="background-image:url('{{ url_for('static', filename='images/facility-functional.png') }}');"></div>
-        <div class="plan-tier-body">
-          <div class="plan-name">Yearly Membership</div>
-          <div class="plan-price">₱7,000 <span>/ Year</span></div>
-          <div class="plan-desc">Full coaching support — a personal trainer and nutrition plan built around your goals.</div>
-          <ul class="plan-features">
-            <li>Gym EquipmentAccess</li>
-            <li>Gym Services</li>
-            
-          </ul>
-          <a href="{{ url_for('login') }}?screen=register" class="btn btn-outline">JOIN NOW</a>
-        </div>
-      </div>
+      {% else %}
+      <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:30px;">Membership plans coming soon.</div>
+      {% endfor %}
     </div>
   </div>
   
@@ -198,7 +157,7 @@
 </section>
 
 <!-- ═══════════════════════════════════════
-     OUR FACILITIES
+     OUR FACILITIES / EQUIPMENT
 ═══════════════════════════════════════ -->
 <section class="section section-alt" id="programs">
   <div class="section-wrap">
@@ -207,13 +166,33 @@
       <div class="section-title">OUR <span class="accent">FACILITIES</span></div>
     </div>
   <div class="facility-grid">
-  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-weight.png') }}');"><span class="fi">🏋️</span><span class="label">Weight Area</span></div>
-  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-cardio.png') }}');"><span class="fi">🏃</span><span class="label">Cardio Area</span></div>
-  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-functional.png') }}');"><span class="fi">🤸</span><span class="label">Functional Training</span></div>
-  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename='images/facility-reception.png') }}');"><span class="fi">🛎️</span><span class="label">Reception</span></div>
+  {% for eq in equipment %}
+  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename=eq.image_path) if eq.image_path else url_for('static', filename='images/facility-weight.png') }}');"><span class="fi">🏋️</span><span class="label">{{ eq.name }}</span></div>
+  {% else %}
+  <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:30px;">Facility photos coming soon.</div>
+  {% endfor %}
 </div>
   </div>
 </section>
+
+{% if services %}
+<!-- ═══════════════════════════════════════
+     OUR SERVICES
+═══════════════════════════════════════ -->
+<section class="section" id="services">
+  <div class="section-wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">What We Offer</div>
+      <div class="section-title">OUR <span class="accent">SERVICES</span></div>
+    </div>
+    <div class="facility-grid">
+      {% for svc in services %}
+      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename=svc.image_path) if svc.image_path else url_for('static', filename='images/facility-reception.png') }}');"><span class="fi">🛎️</span><span class="label">{{ svc.name }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
 
 <!-- ═══════════════════════════════════════
      COACHES

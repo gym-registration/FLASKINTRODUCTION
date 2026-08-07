@@ -166,7 +166,11 @@
               <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
               <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
                 {% if p.stage == 'approval' %}
-                <span class="badge badge-blue">Awaiting Plan Approval</span>
+                {% if p.staff_viewed %}
+                <span class="badge badge-gold">Processing</span>
+                {% else %}
+                <span class="badge badge-blue">Pending — New Request</span>
+                {% endif %}
                 {% elif p.stage == 'awaiting_payment' %}
                 <span class="badge badge-gold">Approved — Awaiting Payment</span>
                 {% elif p.stage == 'verify_cash' %}
@@ -183,9 +187,9 @@
               <button class="btn btn-sm btn-outline" data-id-url="{{ url_for('static', filename=p.student_id_image_path) }}" onclick="viewPaymentProof(this.dataset.idUrl, 'School ID Proof')">🎓 View School ID</button>
               {% endif %}
               {% if p.stage == 'approval' %}
-              {% if p.plan in ('Weekly', 'Monthly', 'Yearly') %}
+              {% if p.plan in ('Weekly', 'Monthly', 'Yearly') and p.is_student and p.student_id_image_path %}
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);align-self:center;cursor:pointer;">
-                <input type="checkbox" class="verify-student-check" {% if p.is_student %}checked{% endif %}>
+                <input type="checkbox" class="verify-student-check" checked>
                 Confirm student discount
               </label>
               {% endif %}
@@ -317,8 +321,6 @@
         <button type="button" class="status-pill" data-status="active" onclick="filterMembersByStatus('active', this)">Active</button>
         <button type="button" class="status-pill" data-status="pending" onclick="filterMembersByStatus('pending', this)">Pending</button>
         <button type="button" class="status-pill" data-status="expired" onclick="filterMembersByStatus('expired', this)">Expired</button>
-        <button type="button" class="status-pill" data-status="declined" onclick="filterMembersByStatus('declined', this)">Declined</button>
-        <button type="button" class="status-pill" data-status="no-plan" onclick="filterMembersByStatus('no-plan', this)">No Plan</button>
       </div>
 
       <div class="panel">
@@ -327,19 +329,15 @@
           <tbody>
             {% for m in members %}
             <tr data-name="{{ m.name|lower }}"
-                data-status="{{ 'active' if m.status == 'Active' else 'pending' if m.status == 'Pending' else 'expired' if m.status == 'Expired' else 'declined' if m.status == 'Declined' else 'no-plan' }}">
+                data-status="{{ 'active' if m.status == 'Active' else 'pending' if m.status == 'Pending' else 'expired' }}">
               <td>#{{ m.id }}</td><td>{{ m.name }}</td><td>{{ m.plan }}</td><td>{{ m.expiry }}</td>
               <td>
                 {% if m.status == 'Active' %}
                 <span class="badge badge-green">Active</span>
                 {% elif m.status == 'Pending' %}
                 <span class="badge badge-blue">Pending</span>
-                {% elif m.status == 'Expired' %}
-                <span class="badge badge-red">Expired</span>
-                {% elif m.status == 'Declined' %}
-                <span class="badge badge-red">Declined</span>
                 {% else %}
-                <span class="badge badge-muted">No Plan</span>
+                <span class="badge badge-red">Expired</span>
                 {% endif %}
               </td>
             </tr>
@@ -368,7 +366,11 @@
               <div style="font-weight:600;margin-bottom:4px;">{{ p.member_name }} — {{ p.plan }}</div>
               <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
                 {% if p.stage == 'approval' %}
-                <span class="badge badge-blue">Awaiting Plan Approval</span>
+                {% if p.staff_viewed %}
+                <span class="badge badge-gold">Processing</span>
+                {% else %}
+                <span class="badge badge-blue">Pending — New Request</span>
+                {% endif %}
                 {% elif p.stage == 'awaiting_payment' %}
                 <span class="badge badge-gold">Approved — Awaiting Payment</span>
                 {% elif p.stage == 'verify_cash' %}
@@ -501,7 +503,6 @@
             <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" style="color:var(--green);">{{ analytics.membership.counts['Active'] }}</div></div>
             <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" style="color:var(--gold);">{{ analytics.membership.counts['Pending'] }}</div></div>
             <div class="stat-card"><div class="stat-label">Expired</div><div class="stat-value" style="color:var(--red);">{{ analytics.membership.counts['Expired'] }}</div></div>
-            <div class="stat-card"><div class="stat-label">No Plan</div><div class="stat-value">{{ analytics.membership.counts['No Plan'] }}</div></div>
             <div class="stat-card"><div class="stat-label">New This Month</div><div class="stat-value" style="color:var(--blue);">{{ analytics.membership.new_this_month }}</div></div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -622,6 +623,29 @@
           </div>
         </div>
       </div>
+
+      <!-- Manage Content (admin/staff only) -->
+      <div class="panel" style="margin-top:24px;">
+        <div class="panel-header">
+          <div><div class="panel-title">Manage Content</div><div style="font-size:12px;color:var(--muted);margin-top:2px;">Edit membership plans, services, and equipment shown to members and on the home page</div></div>
+        </div>
+        <div class="panel-body">
+          <div class="content-subtabs">
+            <button class="content-subtab active" data-content-type="plans" onclick="ContentManager.showType('plans')">Membership Plans</button>
+            <button class="content-subtab" data-content-type="services" onclick="ContentManager.showType('services')">Services</button>
+            <button class="content-subtab" data-content-type="equipment" onclick="ContentManager.showType('equipment')">Equipment / Machines</button>
+          </div>
+
+          <div class="content-toolbar">
+            <div class="content-toolbar-hint">Changes here update both the dashboards and the public home page.</div>
+            <button class="btn btn-red" onclick="ContentManager.openForm(document.querySelector('.content-subtab.active').dataset.contentType, null)">+ ADD NEW</button>
+          </div>
+
+          <div class="content-grid" id="content-grid-plans"></div>
+          <div class="content-grid" id="content-grid-services" style="display:none;"></div>
+          <div class="content-grid" id="content-grid-equipment" style="display:none;"></div>
+        </div>
+      </div>
     </div><!-- /staff-settings -->
 
   </div><!-- /main-content -->
@@ -640,6 +664,79 @@
         <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">This proof was uploaded as a PDF file.</p>
         <a id="proof-modal-pdf-link" href="#" target="_blank" class="btn btn-red" style="display:inline-block;">OPEN PDF</a>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="content-form-modal">
+  <div class="modal" style="max-width:520px;">
+    <button class="modal-close" onclick="closeModal('content-form-modal')">✕</button>
+    <div class="modal-title" id="content-form-title">ADD ITEM</div>
+    <input type="hidden" id="cf-type">
+    <input type="hidden" id="cf-id">
+
+    <div class="content-image-picker">
+      <div class="content-image-preview" id="cf-image-preview">🖼️</div>
+      <div style="flex:1;">
+        <input type="file" accept="image/png,image/jpeg,image/webp" id="cf-image-input" class="form-input" onchange="ContentManager.previewImage(this)">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">PNG/JPG/WEBP, up to 8MB.</div>
+        <div id="cf-remove-image-wrap" style="display:none;margin-top:6px;">
+          <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="cf-remove-image"> Remove current image
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input class="form-input" id="cf-name" placeholder="e.g. Monthly Membership">
+    </div>
+
+    <div class="form-row" id="cf-plan-fields" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Price (₱)</label>
+        <input class="form-input" type="number" min="0" step="0.01" id="cf-price" placeholder="900">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Duration (days)</label>
+        <input class="form-input" type="number" min="1" id="cf-duration" placeholder="30">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <textarea class="form-input" id="cf-description" rows="2" style="resize:vertical;" placeholder="Short description shown to members"></textarea>
+    </div>
+
+    <div class="form-group" id="cf-inclusions-wrap" style="display:none;">
+      <label class="form-label">Inclusions (one per line)</label>
+      <textarea class="form-input" id="cf-inclusions" rows="4" style="resize:vertical;" placeholder="Gym Equipment Access&#10;Locker Access&#10;Free Towel Service"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Display Order</label>
+      <input class="form-input" type="number" id="cf-sort-order" value="0" style="max-width:140px;">
+    </div>
+
+    <label class="content-checkbox-row">
+      <input type="checkbox" id="cf-active" checked> Active / visible to members and on the home page
+    </label>
+
+    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="ContentManager.submit()">SAVE</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="content-delete-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="ContentManager.cancelDelete()">✕</button>
+    <div class="modal-title" style="text-align:center;">CONFIRM DELETE</div>
+    <div id="content-delete-message" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
+      Are you sure you want to delete this item?
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="ContentManager.cancelDelete()">CANCEL</button>
+      <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="ContentManager.performDelete()">DELETE</button>
     </div>
   </div>
 </div>

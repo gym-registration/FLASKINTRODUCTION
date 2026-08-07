@@ -209,6 +209,12 @@ PROOF_ALLOWED_EXT   = {'png', 'jpg', 'jpeg', 'pdf'}
 PROOF_MAX_BYTES     = 10 * 1024 * 1024  # 10MB
 os.makedirs(PROOF_UPLOAD_FOLDER, exist_ok=True)
 
+# ── Gym content (plans / services / equipment) picture uploads ─
+CONTENT_UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads', 'content')
+CONTENT_ALLOWED_EXT   = {'png', 'jpg', 'jpeg', 'webp'}
+CONTENT_MAX_BYTES     = 8 * 1024 * 1024  # 8MB
+os.makedirs(CONTENT_UPLOAD_FOLDER, exist_ok=True)
+
 # ── Flask-Mail configuration ─────────────────────────────────
 # Set these as real environment variables (don't hardcode credentials here).
 # For Gmail: MAIL_USERNAME is your Gmail address, MAIL_PASSWORD is a 16-char
@@ -286,9 +292,21 @@ class MembershipPlan(db.Model):
     duration_days = db.Column(db.Integer, nullable=False)
     price         = db.Column(db.Float, nullable=False)
     is_active     = db.Column(db.Boolean, nullable=False, default=True)
+    # ── Public-facing content (editable by staff/admin from the dashboard,
+    #    displayed on the home page pricing cards) ──
+    description   = db.Column(db.Text, nullable=True)
+    image_path    = db.Column(db.String(255), nullable=True)
+    inclusions    = db.Column(db.Text, nullable=True)   # one inclusion per line
+    sort_order    = db.Column(db.Integer, nullable=False, default=0)
 
     memberships   = db.relationship('Membership', back_populates='plan')
     payments      = db.relationship('Payment', back_populates='plan')
+
+    @property
+    def inclusions_list(self):
+        if not self.inclusions:
+            return []
+        return [line.strip() for line in self.inclusions.splitlines() if line.strip()]
 
     def __repr__(self):
         return f"<MembershipPlan {self.name} ₱{self.price}>"
@@ -331,6 +349,7 @@ class Payment(db.Model):
     paid_at          = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     verified_at      = db.Column(db.DateTime, nullable=True)
     notified         = db.Column(db.Boolean, nullable=False, default=False)
+    staff_viewed     = db.Column(db.Boolean, nullable=False, default=False)
 
     member      = db.relationship('User', foreign_keys=[member_id], back_populates='payments')
     plan        = db.relationship('MembershipPlan', back_populates='payments')
@@ -382,11 +401,350 @@ class Announcement(db.Model):
     posted_by = db.relationship('User', foreign_keys=[posted_by_id])
 
 
+class GymService(db.Model):
+    """A service offered at the gym (e.g. 'Personal Coaching', 'Locker
+    Rental') — editable by staff/admin and shown on the public home page."""
+    __tablename__ = 'gym_services'
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name         = db.Column(db.String(80), nullable=False)
+    description  = db.Column(db.Text, nullable=True)
+    image_path   = db.Column(db.String(255), nullable=True)
+    is_active    = db.Column(db.Boolean, nullable=False, default=True)
+    sort_order   = db.Column(db.Integer, nullable=False, default=0)
+    created_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
+                             onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<GymService {self.name}>"
+
+
+class GymEquipment(db.Model):
+    """A piece of equipment / machine / training area — editable by
+    staff/admin and shown on the public home page."""
+    __tablename__ = 'gym_equipment'
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name         = db.Column(db.String(80), nullable=False)
+    description  = db.Column(db.Text, nullable=True)
+    image_path   = db.Column(db.String(255), nullable=True)
+    is_active    = db.Column(db.Boolean, nullable=False, default=True)
+    sort_order   = db.Column(db.Integer, nullable=False, default=0)
+    created_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
+                             onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<GymEquipment {self.name}>"
+
+
+# ── Content-management (plans / services / equipment) helpers ──────────
+def _content_role_ok():
+    return session.get('role') in ('staff', 'admin')
+
+
+def _save_content_image(file_storage, existing_path=None):
+    """Save an uploaded content image to CONTENT_UPLOAD_FOLDER and return the
+    web-relative path to store on the model. Returns existing_path unchanged
+    if no new file was uploaded. Raises ValueError on invalid file."""
+    if not file_storage or not file_storage.filename:
+        return existing_path
+    ext = file_storage.filename.rsplit('.', 1)[-1].lower() if '.' in file_storage.filename else ''
+    if ext not in CONTENT_ALLOWED_EXT:
+        raise ValueError('Image must be a PNG, JPG, JPEG, or WEBP file.')
+    file_storage.seek(0, os.SEEK_END)
+    size = file_storage.tell()
+    file_storage.seek(0)
+    if size > CONTENT_MAX_BYTES:
+        raise ValueError('Image must be smaller than 8MB.')
+    safe_name = secure_filename(f"{secrets.token_hex(8)}.{ext}")
+    file_storage.save(os.path.join(CONTENT_UPLOAD_FOLDER, safe_name))
+    return f'uploads/content/{safe_name}'
+
+
+def _delete_content_image(image_path):
+    """Best-effort removal of a previously-uploaded content image from disk."""
+    if not image_path:
+        return
+    full_path = os.path.join(app.root_path, 'static', image_path)
+    try:
+        if os.path.isfile(full_path):
+            os.remove(full_path)
+    except OSError:
+        pass
+
+
+def _plan_to_dict(p):
+    return {
+        'id': p.id, 'name': p.name, 'duration_days': p.duration_days,
+        'price': p.price, 'is_active': p.is_active,
+        'description': p.description or '', 'image_path': p.image_path or '',
+        'inclusions': p.inclusions or '', 'sort_order': p.sort_order,
+    }
+
+
+def _service_to_dict(s):
+    return {
+        'id': s.id, 'name': s.name, 'description': s.description or '',
+        'image_path': s.image_path or '', 'is_active': s.is_active,
+        'sort_order': s.sort_order,
+    }
+
+
+def _equipment_to_dict(e):
+    return {
+        'id': e.id, 'name': e.name, 'description': e.description or '',
+        'image_path': e.image_path or '', 'is_active': e.is_active,
+        'sort_order': e.sort_order,
+    }
+
+
+# ── Content-management API: Membership Plans ────────────────────────────
+@app.route('/api/content/plans', methods=['GET'])
+def api_list_plans():
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    plans = MembershipPlan.query.order_by(MembershipPlan.sort_order, MembershipPlan.id).all()
+    return jsonify(success=True, items=[_plan_to_dict(p) for p in plans])
+
+
+@app.route('/api/content/plans/save', methods=['POST'])
+def api_save_plan():
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    plan_id = request.form.get('id', '').strip()
+    name          = (request.form.get('name') or '').strip()
+    duration_days = request.form.get('duration_days', '').strip()
+    price         = request.form.get('price', '').strip()
+    description   = (request.form.get('description') or '').strip()
+    inclusions    = (request.form.get('inclusions') or '').strip()
+    sort_order    = request.form.get('sort_order', '0').strip()
+    is_active     = request.form.get('is_active', 'true').strip().lower() != 'false'
+    remove_image  = request.form.get('remove_image', 'false').strip().lower() == 'true'
+
+    if not name:
+        return jsonify(success=False, error='Plan name is required.'), 400
+    try:
+        duration_days = int(duration_days)
+        price = float(price)
+        sort_order = int(sort_order or 0)
+        if duration_days <= 0 or price < 0:
+            raise ValueError()
+    except ValueError:
+        return jsonify(success=False, error='Duration and price must be valid positive numbers.'), 400
+
+    if plan_id:
+        plan = MembershipPlan.query.get(plan_id)
+        if not plan:
+            return jsonify(success=False, error='Plan not found.'), 404
+        dupe = MembershipPlan.query.filter(MembershipPlan.name == name, MembershipPlan.id != plan.id).first()
+    else:
+        plan = MembershipPlan()
+        dupe = MembershipPlan.query.filter_by(name=name).first()
+
+    if dupe:
+        return jsonify(success=False, error='A plan with that name already exists.'), 400
+
+    try:
+        image_path = plan.image_path if plan_id else None
+        if remove_image:
+            _delete_content_image(image_path)
+            image_path = None
+        else:
+            new_path = _save_content_image(request.files.get('image'), image_path)
+            if new_path != image_path:
+                _delete_content_image(image_path)
+            image_path = new_path
+    except ValueError as e:
+        return jsonify(success=False, error=str(e)), 400
+
+    plan.name          = name
+    plan.duration_days = duration_days
+    plan.price         = price
+    plan.description   = description or None
+    plan.inclusions    = inclusions or None
+    plan.image_path    = image_path
+    plan.sort_order    = sort_order
+    plan.is_active      = is_active
+
+    if not plan_id:
+        db.session.add(plan)
+    db.session.commit()
+    return jsonify(success=True, message='Plan saved.', item=_plan_to_dict(plan))
+
+
+@app.route('/api/content/plans/<int:plan_id>/delete', methods=['POST'])
+def api_delete_plan(plan_id):
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    plan = MembershipPlan.query.get(plan_id)
+    if not plan:
+        return jsonify(success=False, error='Plan not found.'), 404
+    if Membership.query.filter_by(plan_id=plan.id).first():
+        # Don't hard-delete a plan members are actively on — deactivate instead.
+        plan.is_active = False
+        db.session.commit()
+        return jsonify(success=True, message='Plan is in use by members, so it was deactivated instead of deleted.', deactivated=True)
+    _delete_content_image(plan.image_path)
+    db.session.delete(plan)
+    db.session.commit()
+    return jsonify(success=True, message='Plan deleted.')
+
+
+# ── Content-management API: Services ─────────────────────────────────────
+@app.route('/api/content/services', methods=['GET'])
+def api_list_services():
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    items = GymService.query.order_by(GymService.sort_order, GymService.id).all()
+    return jsonify(success=True, items=[_service_to_dict(s) for s in items])
+
+
+@app.route('/api/content/services/save', methods=['POST'])
+def api_save_service():
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    item_id      = request.form.get('id', '').strip()
+    name         = (request.form.get('name') or '').strip()
+    description  = (request.form.get('description') or '').strip()
+    sort_order   = request.form.get('sort_order', '0').strip()
+    is_active    = request.form.get('is_active', 'true').strip().lower() != 'false'
+    remove_image = request.form.get('remove_image', 'false').strip().lower() == 'true'
+
+    if not name:
+        return jsonify(success=False, error='Service name is required.'), 400
+    try:
+        sort_order = int(sort_order or 0)
+    except ValueError:
+        sort_order = 0
+
+    if item_id:
+        item = GymService.query.get(item_id)
+        if not item:
+            return jsonify(success=False, error='Service not found.'), 404
+    else:
+        item = GymService()
+
+    try:
+        image_path = item.image_path if item_id else None
+        if remove_image:
+            _delete_content_image(image_path)
+            image_path = None
+        else:
+            new_path = _save_content_image(request.files.get('image'), image_path)
+            if new_path != image_path:
+                _delete_content_image(image_path)
+            image_path = new_path
+    except ValueError as e:
+        return jsonify(success=False, error=str(e)), 400
+
+    item.name        = name
+    item.description = description or None
+    item.image_path  = image_path
+    item.sort_order  = sort_order
+    item.is_active   = is_active
+
+    if not item_id:
+        db.session.add(item)
+    db.session.commit()
+    return jsonify(success=True, message='Service saved.', item=_service_to_dict(item))
+
+
+@app.route('/api/content/services/<int:item_id>/delete', methods=['POST'])
+def api_delete_service(item_id):
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    item = GymService.query.get(item_id)
+    if not item:
+        return jsonify(success=False, error='Service not found.'), 404
+    _delete_content_image(item.image_path)
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify(success=True, message='Service deleted.')
+
+
+# ── Content-management API: Equipment / Machines ─────────────────────────
+@app.route('/api/content/equipment', methods=['GET'])
+def api_list_equipment():
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    items = GymEquipment.query.order_by(GymEquipment.sort_order, GymEquipment.id).all()
+    return jsonify(success=True, items=[_equipment_to_dict(e) for e in items])
+
+
+@app.route('/api/content/equipment/save', methods=['POST'])
+def api_save_equipment():
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    item_id      = request.form.get('id', '').strip()
+    name         = (request.form.get('name') or '').strip()
+    description  = (request.form.get('description') or '').strip()
+    sort_order   = request.form.get('sort_order', '0').strip()
+    is_active    = request.form.get('is_active', 'true').strip().lower() != 'false'
+    remove_image = request.form.get('remove_image', 'false').strip().lower() == 'true'
+
+    if not name:
+        return jsonify(success=False, error='Equipment name is required.'), 400
+    try:
+        sort_order = int(sort_order or 0)
+    except ValueError:
+        sort_order = 0
+
+    if item_id:
+        item = GymEquipment.query.get(item_id)
+        if not item:
+            return jsonify(success=False, error='Equipment not found.'), 404
+    else:
+        item = GymEquipment()
+
+    try:
+        image_path = item.image_path if item_id else None
+        if remove_image:
+            _delete_content_image(image_path)
+            image_path = None
+        else:
+            new_path = _save_content_image(request.files.get('image'), image_path)
+            if new_path != image_path:
+                _delete_content_image(image_path)
+            image_path = new_path
+    except ValueError as e:
+        return jsonify(success=False, error=str(e)), 400
+
+    item.name        = name
+    item.description = description or None
+    item.image_path  = image_path
+    item.sort_order  = sort_order
+    item.is_active   = is_active
+
+    if not item_id:
+        db.session.add(item)
+    db.session.commit()
+    return jsonify(success=True, message='Equipment saved.', item=_equipment_to_dict(item))
+
+
+@app.route('/api/content/equipment/<int:item_id>/delete', methods=['POST'])
+def api_delete_equipment(item_id):
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    item = GymEquipment.query.get(item_id)
+    if not item:
+        return jsonify(success=False, error='Equipment not found.'), 404
+    _delete_content_image(item.image_path)
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify(success=True, message='Equipment deleted.')
+
+
 # ── Routes ────────────────────────────────────────────────────
 @app.route('/')
 @app.route('/home')
 def home():
-    return render_template('home.html')
+    plans     = MembershipPlan.query.filter_by(is_active=True).order_by(MembershipPlan.sort_order, MembershipPlan.id).all()
+    services  = GymService.query.filter_by(is_active=True).order_by(GymService.sort_order, GymService.id).all()
+    equipment = GymEquipment.query.filter_by(is_active=True).order_by(GymEquipment.sort_order, GymEquipment.id).all()
+    return render_template('home.html', plans=plans, services=services, equipment=equipment)
 
 @app.route('/trmem')
 @app.route('/trmem.html')
@@ -1246,6 +1604,53 @@ def member_submit_payment():
     return jsonify(success=True, message=f'Plan requested to start {requested_start.strftime("%b %d, %Y")}. Please wait for staff approval before proceeding to payment.')
 
 
+@app.route('/member/cancel-plan-request', methods=['POST'])
+def member_cancel_plan_request():
+    """Member withdraws their own plan request — but only while it's still
+    strictly Pending, i.e. staff hasn't opened/reviewed it yet. Once staff
+    has seen it (Processing) or made a decision (Approved/Declined), it's no
+    longer cancelable here — it's already in motion.
+
+    Cancelling removes the request from staff's queue entirely (the
+    'pending'/'approved' filter used everywhere else naturally excludes
+    'cancelled'), and — if this request hadn't been activated yet — clears
+    the placeholder membership row so the member can submit a fresh request
+    right away."""
+    if session.get('role') != 'member':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    user = User.query.get(session.get('user_id'))
+    if user is None:
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    payment = (
+        Payment.query
+        .filter_by(member_id=user.id, status='pending')
+        .order_by(Payment.paid_at.desc())
+        .first()
+    )
+    if payment is None:
+        return jsonify(success=False, error='No pending plan request to cancel.'), 404
+
+    if payment.staff_viewed:
+        return jsonify(success=False, error='Staff has already started reviewing this request — it can no longer be cancelled.'), 409
+
+    payment.status = 'cancelled'
+    payment.verified_at = datetime.now(timezone.utc)
+    payment.notified = True  # member cancelled it themselves — no popup needed
+
+    # Only clear the membership if it was 'pending' *because of this request*.
+    # An already-active membership (this was a renewal attempt on top of it)
+    # stays untouched.
+    membership = Membership.query.filter_by(member_id=user.id).first()
+    if membership and membership.status == 'pending':
+        db.session.delete(membership)
+
+    db.session.commit()
+
+    return jsonify(success=True, message='Plan request cancelled. You can submit a new request anytime.')
+
+
 @app.route('/member/submit-payment-method', methods=['POST'])
 def member_submit_payment_method():
     """Called from the Payment tab: attaches the chosen payment method
@@ -1603,39 +2008,49 @@ def member():
     plan_obj   = membership.plan if membership else None
 
     current_plan = None
+    declined_plan_info = None
     if membership and plan_obj:
-        # Count down from whichever is later: today, or the membership's own
-        # start date. Without this, a membership that hasn't started yet
-        # (start_date in the future) shows a "Days Left" figure counted from
-        # today — which can end up LONGER than the plan's own duration
-        # (e.g. a Monthly plan showing 63 days left). Clamping to the start
-        # date keeps Days Left always inside the plan's real length.
-        effective_start = max(membership.start_date, today)
-        days_total = max((membership.expiry_date - membership.start_date).days, 1)
-        days_left  = max((membership.expiry_date - effective_start).days, 0)
-        days_used  = max(min(days_total - days_left, days_total), 0)
-        percent_used = int((days_used / days_total) * 100) if days_total else 0
-
-        if membership.expiry_date < today:
-            plan_status = 'Expired'
-        elif membership.status == 'declined':
-            plan_status = 'Declined'
-        elif membership.status == 'pending':
-            plan_status = 'Pending'
+        if membership.status == 'declined':
+            # A declined request never actually became a real membership —
+            # there's no real start/expiry/days-left to report, so it should
+            # NOT populate the "Current Plan" panel (that panel is only for
+            # plans that are/were actually in effect). Keep just the plan
+            # name so the Upgrade/Renew panel can still show its "request
+            # was declined" banner; the Current Plan panel itself falls back
+            # to its normal "NO ACTIVE PLAN" state.
+            declined_plan_info = {'name': plan_obj.name}
         else:
-            plan_status = 'Active'
+            # Count down from whichever is later: today, or the membership's
+            # own start date. Without this, a membership that hasn't started
+            # yet (start_date in the future) shows a "Days Left" figure
+            # counted from today — which can end up LONGER than the plan's
+            # own duration (e.g. a Monthly plan showing 63 days left).
+            # Clamping to the start date keeps Days Left always inside the
+            # plan's real length.
+            effective_start = max(membership.start_date, today)
+            days_total = max((membership.expiry_date - membership.start_date).days, 1)
+            days_left  = max((membership.expiry_date - effective_start).days, 0)
+            days_used  = max(min(days_total - days_left, days_total), 0)
+            percent_used = int((days_used / days_total) * 100) if days_total else 0
 
-        current_plan = {
-            'name': plan_obj.name,
-            'price': plan_obj.price,
-            'start_date': membership.start_date.strftime('%B %d, %Y'),
-            'expiry_date': membership.expiry_date.strftime('%B %d, %Y'),
-            'days_left': days_left,
-            'days_total': days_total,
-            'days_used': days_used,
-            'percent_used': percent_used,
-            'status': plan_status,
-        }
+            if membership.expiry_date < today:
+                plan_status = 'Expired'
+            elif membership.status == 'pending':
+                plan_status = 'Pending'
+            else:
+                plan_status = 'Active'
+
+            current_plan = {
+                'name': plan_obj.name,
+                'price': plan_obj.price,
+                'start_date': membership.start_date.strftime('%B %d, %Y'),
+                'expiry_date': membership.expiry_date.strftime('%B %d, %Y'),
+                'days_left': days_left,
+                'days_total': days_total,
+                'days_used': days_used,
+                'percent_used': percent_used,
+                'status': plan_status,
+            }
 
     # ── Attendance (current month) ──
     current_month_data = _get_member_attendance_month(user.id, today.year, today.month)
@@ -1658,6 +2073,12 @@ def member():
     )
 
     # ── Payment history (this member's own submissions) ──
+    # A row that was declined at the *plan request* stage (status='rejected'
+    # while the method is still the placeholder "Pending — ...") never had an
+    # actual payment attached — the member was never asked to pay, so it
+    # doesn't belong in "Past Payments". Only show declined rows here if a
+    # real payment method (Cash/GCash) had actually been submitted and later
+    # rejected.
     payment_rows = (
         Payment.query
         .filter_by(member_id=user.id)
@@ -1672,7 +2093,8 @@ def member():
         'reference': p.reference_number or '—',
         'status':    p.status,
         'is_student': p.is_student,
-    } for p in payment_rows]
+    } for p in payment_rows
+      if not (p.status == 'rejected' and (p.method or '').startswith('Pending'))]
 
     # ── Awaiting approval (plan request submitted, staff/admin hasn't
     #    reviewed it yet — no payment can be made until it's approved) ──
@@ -1685,10 +2107,14 @@ def member():
     awaiting_approval = None
     if awaiting_approval_row is not None:
         awaiting_approval = {
+            'id':          awaiting_approval_row.id,
             'plan_name':  awaiting_approval_row.plan.name if awaiting_approval_row.plan else '—',
             'amount':     f'{float(awaiting_approval_row.amount):,.2f}',
             'start_date': awaiting_approval_row.requested_start_date.strftime('%b %d, %Y') if awaiting_approval_row.requested_start_date else '—',
             'is_student': awaiting_approval_row.is_student,
+            # 'Pending'    — submitted, staff hasn't opened the Request tab yet
+            # 'Processing' — staff has opened it, decision not made yet
+            'request_status': 'Processing' if awaiting_approval_row.staff_viewed else 'Pending',
         }
 
     # ── Pending payment (plan already approved by staff/admin — drives the
@@ -1709,6 +2135,7 @@ def member():
             'method':      pending_payment_row.method,
             'reference':   pending_payment_row.reference_number,
             'is_student':  pending_payment_row.is_student,
+            'request_status': 'Approved',
         }
 
     # ── Just-approved notice (shown once as a "Congratulations! Proceed to
@@ -1776,11 +2203,42 @@ def member():
     # locked behind an active plan.
     plan_active = bool(current_plan and current_plan['status'] == 'Active')
 
+    # ── Public-facing content (membership plans / services / equipment) ──
+    # Sourced from the same admin/staff-editable tables that drive the home
+    # page, so anything they change in Settings → Manage Content shows up
+    # here too instead of being hardcoded per-page.
+    content_plans = MembershipPlan.query.filter_by(is_active=True).order_by(MembershipPlan.sort_order, MembershipPlan.id).all()
+    content_services  = GymService.query.filter_by(is_active=True).order_by(GymService.sort_order, GymService.id).all()
+    content_equipment = GymEquipment.query.filter_by(is_active=True).order_by(GymEquipment.sort_order, GymEquipment.id).all()
+
+    plans_data = [{
+        'key':            p.name.lower(),
+        'name':           p.name,
+        'price':          p.price,
+        'duration_days':  p.duration_days,
+        'description':    p.description or '',
+        'inclusions':     p.inclusions_list,
+        'image_path':     url_for('static', filename=p.image_path) if p.image_path else '',
+    } for p in content_plans]
+
+    services_data = [{
+        'id':          s.id,
+        'name':        s.name,
+        'description': s.description or '',
+        'image_path':  url_for('static', filename=s.image_path) if s.image_path else '',
+    } for s in content_services]
+
     return render_template(
         'member-dashboard.html',
         member=user,
         plan=current_plan,
+        declined_plan=declined_plan_info,
         plan_active=plan_active,
+        content_plans=content_plans,
+        content_services=content_services,
+        content_equipment=content_equipment,
+        plans_data=plans_data,
+        services_data=services_data,
         present_days=present_days,
         no_plan_days=no_plan_days,
         days_in_month=days_in_month,
@@ -1928,7 +2386,10 @@ def staff():
     today = _today_manila()
     attendance_today = _get_attendance_today()
 
-    members = _get_members_with_plans()
+    # "No Plan" and "Declined" members aren't relevant to staff's day-to-day
+    # (check-in, payment verification, coaching) — the Member Directory only
+    # needs to show members who actually have a plan in effect.
+    members = [m for m in _get_members_with_plans() if m['status'] not in ('No Plan', 'Declined')]
     active_members       = [m for m in members if m['status'] == 'Active']
     pending_status_members = [m for m in members if m['status'] == 'Pending']
     expiring_soon    = [
@@ -1945,6 +2406,19 @@ def staff():
         .order_by(Payment.paid_at.desc())
         .all()
     )
+
+    # ── The member-facing "Processing" status fires the moment staff actually
+    #    sees a plan request — which is right here, as it's loaded into this
+    #    dashboard. Flip the flag for any new-request card that hasn't been
+    #    seen yet. ──
+    _newly_viewed = False
+    for p in pending_requests_rows:
+        if p.status == 'pending' and not p.staff_viewed:
+            p.staff_viewed = True
+            _newly_viewed = True
+    if _newly_viewed:
+        db.session.commit()
+
     pending_requests = [{
         'id': p.id,
         'txn': f'TXN-{9000 + p.id}',
@@ -1959,13 +2433,17 @@ def staff():
         'wants_coach': p.wants_coach,
         'coach_name': p.coach_name,
         'stage': _payment_stage(p),
+        'staff_viewed': p.staff_viewed,
     } for p in pending_requests_rows]
 
 
-    # ── Recently processed requests (approved/rejected), for reference ──
+    # ── Recently processed requests — approved only. A declined request just
+    #    disappears from view here; it only reappears once the member submits
+    #    a new request and that one gets approved. (Admin's Payment History
+    #    tab still keeps the full approved+declined audit trail.) ──
     processed_requests_rows = (
         Payment.query
-        .filter(Payment.status.in_(['verified', 'rejected']))
+        .filter(Payment.status == 'verified')
         .order_by(Payment.paid_at.desc())
         .limit(20)
         .all()
@@ -2344,11 +2822,15 @@ def admin():
         'wants_coach': p.wants_coach,
         'coach_name': p.coach_name,
         'stage': _payment_stage(p),
+        'staff_viewed': p.staff_viewed,
     } for p in pending_payments_rows]
 
+    # ── Payment history — approved only, same as staff's Recently Processed.
+    #    A declined request just disappears from the list; it only shows up
+    #    again once the member submits a new request and that one is approved. ──
     payment_history_rows = (
         Payment.query
-        .filter(Payment.status.in_(['verified', 'rejected']))
+        .filter(Payment.status == 'verified')
         .order_by(Payment.paid_at.desc())
         .limit(50)
         .all()
@@ -2401,10 +2883,18 @@ def seed_default_users():
 
 def seed_default_plans():
     defaults = [
-        {'name': 'Daily',   'duration_days': 1,   'price': 100.0},
-        {'name': 'Weekly',  'duration_days': 14,  'price': 450.0},
-        {'name': 'Monthly', 'duration_days': 30,  'price': 900.0},
-        {'name': 'Yearly',  'duration_days': 365, 'price': 7000.0},
+        {'name': 'Daily',   'duration_days': 1,   'price': 100.0,
+         'description': 'Perfect for a casual visit — walk in, train, and go, no commitment required.',
+         'inclusions': 'Gym Equipment Access\nGym Services', 'sort_order': 1},
+        {'name': 'Weekly',  'duration_days': 14,  'price': 450.0,
+         'description': 'A short-term option for building a routine — full access for a full week.',
+         'inclusions': 'Gym Equipment Access\nGym Services', 'sort_order': 2},
+        {'name': 'Monthly', 'duration_days': 30,  'price': 900.0,
+         'description': 'Our most popular plan — unlimited visits with trainer support to keep you on track.',
+         'inclusions': 'Gym Equipment Access\nGym Services', 'sort_order': 3},
+        {'name': 'Yearly',  'duration_days': 365, 'price': 7000.0,
+         'description': 'Full coaching support — a personal trainer and nutrition plan built around your goals.',
+         'inclusions': 'Gym Equipment Access\nGym Services', 'sort_order': 4},
     ]
     for p in defaults:
         existing = MembershipPlan.query.filter_by(name=p['name']).first()
@@ -2413,13 +2903,37 @@ def seed_default_plans():
                 name=p['name'],
                 duration_days=p['duration_days'],
                 price=p['price'],
+                description=p['description'],
+                inclusions=p['inclusions'],
+                sort_order=p['sort_order'],
             ))
         else:
             # Keep an already-seeded row in sync if the defaults above change
-            # (e.g. Weekly's duration moving from 7 to 14 days).
+            # (e.g. Weekly's duration moving from 7 to 14 days). Content
+            # fields (description/inclusions/image) are left alone once set,
+            # so staff/admin edits made from the dashboard aren't overwritten.
             existing.duration_days = p['duration_days']
             existing.price         = p['price']
+            if existing.description is None:
+                existing.description = p['description']
+            if existing.inclusions is None:
+                existing.inclusions = p['inclusions']
+            if not existing.sort_order:
+                existing.sort_order = p['sort_order']
     db.session.commit()
+
+
+def seed_default_equipment():
+    defaults = [
+        {'name': 'Weight Area',          'image_path': 'images/facility-weight.png',      'sort_order': 1},
+        {'name': 'Cardio Area',          'image_path': 'images/facility-cardio.png',      'sort_order': 2},
+        {'name': 'Functional Training',  'image_path': 'images/facility-functional.png',  'sort_order': 3},
+        {'name': 'Reception',            'image_path': 'images/facility-reception.png',   'sort_order': 4},
+    ]
+    if GymEquipment.query.count() == 0:
+        for e in defaults:
+            db.session.add(GymEquipment(name=e['name'], image_path=e['image_path'], sort_order=e['sort_order']))
+        db.session.commit()
 
 
 def _run_startup_migrations():
@@ -2430,6 +2944,11 @@ def _run_startup_migrations():
     migrations = [
         ('payments', 'requested_start_date', "ALTER TABLE payments ADD COLUMN requested_start_date DATE NULL"),
         ('payments', 'notified', "ALTER TABLE payments ADD COLUMN notified TINYINT(1) NOT NULL DEFAULT 0"),
+        ('payments', 'staff_viewed', "ALTER TABLE payments ADD COLUMN staff_viewed TINYINT(1) NOT NULL DEFAULT 0"),
+        ('membership_plans', 'description', "ALTER TABLE membership_plans ADD COLUMN description TEXT NULL"),
+        ('membership_plans', 'image_path',  "ALTER TABLE membership_plans ADD COLUMN image_path VARCHAR(255) NULL"),
+        ('membership_plans', 'inclusions',  "ALTER TABLE membership_plans ADD COLUMN inclusions TEXT NULL"),
+        ('membership_plans', 'sort_order',  "ALTER TABLE membership_plans ADD COLUMN sort_order INT NOT NULL DEFAULT 0"),
     ]
     with db.engine.connect() as conn:
         for table, column, ddl in migrations:
@@ -2445,6 +2964,7 @@ if __name__ == '__main__':
         db.create_all()
         _run_startup_migrations()
         seed_default_plans()
+        seed_default_equipment()
         seed_default_users()
         print("Tables created, plans and demo users seeded!")
     app.run(debug=True)

@@ -19,6 +19,11 @@ const MemberModule = (() => {
   let attendanceView  = { year: null, month: null };
   let attendanceBusy  = false;
 
+  // Populated at init() from JSON the server embeds for the plans/services
+  // that admin/staff manage under Settings → Manage Content.
+  let PLAN_DATA    = {}; // keyed by plan name lowercased, e.g. 'monthly'
+  let SERVICE_DATA = {}; // keyed by service id
+
   function _planActive() {
     const root = document.getElementById('member-dashboard-root');
     return root ? root.dataset.planActive === 'true' : true;
@@ -45,6 +50,13 @@ const MemberModule = (() => {
     _showApprovalNoticeIfAny(memberData.plan_approved_notice);
     _showPaymentApprovedNoticeIfAny(memberData.payment_verified_notice);
     _showDeclinedNoticeIfAny(memberData.plan_declined_notice);
+
+    // Load membership-plan and service content managed by admin/staff
+    // (Settings → Manage Content) — keeps prices, descriptions, and
+    // inclusions here in sync with what they edit, instead of hardcoding it.
+    (_parseJsonScript('member-plans-data', []) || []).forEach(p => { PLAN_DATA[p.key] = p; });
+    (_parseJsonScript('member-services-data', []) || []).forEach(s => { SERVICE_DATA[s.id] = s; });
+    _updatePlanPriceDisplays();
 
     // Members without an active plan land on Overview (which points them to
     // My Membership); everything else stays locked until they pay.
@@ -112,6 +124,18 @@ const MemberModule = (() => {
       return JSON.parse(el.textContent || el.innerText || '{}');
     } catch (e) {
       return {};
+    }
+  }
+
+  /** Parse a JSON <script> tag embedded by the server (e.g. plan/service
+   *  content managed by admin/staff). Returns fallback on any failure. */
+  function _parseJsonScript(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    try {
+      return JSON.parse(el.textContent || el.innerText || 'null') ?? fallback;
+    } catch (e) {
+      return fallback;
     }
   }
 
@@ -225,12 +249,15 @@ const MemberModule = (() => {
   }
 
   // ── Student discount pricing ──
-  // Daily has no listed student rate, so it's left out on purpose and just
+  // This promo table is a fixed rate list (not part of the admin/staff
+  // content editor) and mirrors the same STUDENT_PLAN_PRICES table the
+  // server uses to compute the actual charge — so what's shown here always
+  // matches what gets billed. Regular prices come from PLAN_DATA (admin/
+  // staff editable). Daily has no listed student rate on purpose — it just
   // falls back to its normal price everywhere below.
-  const REGULAR_PRICES = { daily: 100, weekly: 450, monthly: 900, yearly: 7000 };
   const STUDENT_PRICES = { weekly: 400, monthly: 800, yearly: 6000 };
 
-  function _formatPeso(n) { return '₱' + n.toLocaleString('en-US'); }
+  function _formatPeso(n) { return '₱' + Number(n).toLocaleString('en-US'); }
 
   function _isStudentSelected() {
     return document.getElementById('member-renew-student')?.value === 'yes';
@@ -238,7 +265,8 @@ const MemberModule = (() => {
 
   /** Plain "₱N" text for a plan key, honoring student status. */
   function _planPriceText(key, isStudent) {
-    const price = (isStudent && STUDENT_PRICES[key] !== undefined) ? STUDENT_PRICES[key] : REGULAR_PRICES[key];
+    const regular = PLAN_DATA[key] ? PLAN_DATA[key].price : 0;
+    const price = (isStudent && STUDENT_PRICES[key] !== undefined) ? STUDENT_PRICES[key] : regular;
     return _formatPeso(price);
   }
 
@@ -246,15 +274,17 @@ const MemberModule = (() => {
    *  plus the discounted rate when the student toggle is set to Yes. */
   function _updatePlanPriceDisplays() {
     const isStudent = _isStudentSelected();
-    Object.keys(REGULAR_PRICES).forEach(key => {
+    Object.keys(PLAN_DATA).forEach(key => {
       const el = document.querySelector(`#member-membership .plan-card[onclick*="'${key}'"] .plan-price`);
       if (!el) return;
+      const regular = PLAN_DATA[key].price;
       const discounted = isStudent && STUDENT_PRICES[key] !== undefined;
       el.innerHTML = discounted
-        ? `<span style="text-decoration:line-through;opacity:.55;font-size:0.65em;margin-right:4px;">${_formatPeso(REGULAR_PRICES[key])}</span>${_formatPeso(STUDENT_PRICES[key])}`
-        : _formatPeso(REGULAR_PRICES[key]);
+        ? `<span style="text-decoration:line-through;opacity:.55;font-size:0.65em;margin-right:4px;">${_formatPeso(regular)}</span>${_formatPeso(STUDENT_PRICES[key])}`
+        : _formatPeso(regular);
     });
   }
+
 
   /** Preview uploaded school ID image */
   function previewStudentId(input) {
@@ -429,8 +459,6 @@ const MemberModule = (() => {
     _openConfirmPlanModal();
   }
 
-  const PLAN_DURATION_DAYS = { daily: 1, weekly: 14, yearly: 365 };
-
   /** Add one calendar month, landing on the same day-of-month when possible
    *  and clamping to the last valid day when the target month is shorter
    *  (e.g. Jan 31 -> Feb 28/29, not Mar 3). Mirrors the backend's logic so
@@ -443,10 +471,13 @@ const MemberModule = (() => {
     return result;
   }
 
-  /** Compute a plan's end date from its start date, given the plan key. */
+  /** Compute a plan's end date from its start date, given the plan key.
+   *  "Monthly" is always a real calendar month (mirrors the backend's
+   *  _plan_expiry special-case); every other plan uses its duration_days
+   *  from PLAN_DATA (admin/staff editable), falling back to 30. */
   function _planEndDate(planKey, start) {
     if (planKey === 'monthly') return _addCalendarMonth(start);
-    const durationDays = PLAN_DURATION_DAYS[planKey] || 30;
+    const durationDays = (PLAN_DATA[planKey] && PLAN_DATA[planKey].duration_days) || 30;
     const end = new Date(start);
     end.setDate(end.getDate() + durationDays);
     return end;
@@ -457,13 +488,13 @@ const MemberModule = (() => {
     const p = _pendingSubmission;
     if (!p) return;
 
-    const info = PLAN_INFO[selectedPlan];
+    const info = PLAN_DATA[selectedPlan];
     const nameEl  = document.getElementById('confirm-plan-name');
     const priceEl = document.getElementById('confirm-plan-price');
     const dateEl  = document.getElementById('confirm-plan-date');
     const endEl   = document.getElementById('confirm-plan-end-date');
 
-    if (nameEl)  nameEl.textContent  = info ? info.title.toUpperCase() : selectedPlan.toUpperCase();
+    if (nameEl)  nameEl.textContent  = info ? info.name.toUpperCase() : selectedPlan.toUpperCase();
     if (priceEl) {
       priceEl.textContent = _planPriceText(selectedPlan, p.isStudent);
       priceEl.textContent += p.isStudent && STUDENT_PRICES[selectedPlan] !== undefined ? ' (student rate)' : '';
@@ -559,77 +590,67 @@ const MemberModule = (() => {
     window.location.reload();
   }
 
+  /* ── Withdraw a submitted plan request (Pending / Processing only) ── */
+  let _pendingWithdrawId = null;
+
+  /** Button on the "awaiting approval" banner — asks for confirmation
+   *  before actually withdrawing the request. */
+  function withdrawPlanRequest(paymentId) {
+    _pendingWithdrawId = paymentId;
+    openModal('withdraw-request-modal');
+  }
+
+  /** "No, keep it" — just discards, no changes made. */
+  function cancelWithdrawRequest() {
+    closeModal('withdraw-request-modal');
+    _pendingWithdrawId = null;
+  }
+
+  /** "Yes, cancel it" — actually withdraws the request from the server. */
+  function confirmWithdrawRequest() {
+    closeModal('withdraw-request-modal');
+    if (!_pendingWithdrawId) return;
+    _pendingWithdrawId = null;
+
+    const btn = document.querySelector('.withdraw-request-btn');
+    const originalLabel = btn ? btn.textContent : 'CANCEL REQUEST';
+    if (btn) { btn.disabled = true; btn.textContent = 'CANCELLING...'; }
+
+    fetch('/member/cancel-plan-request', { method: 'POST' })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+          showToast(data.error || 'Could not cancel request.', 'error');
+          return;
+        }
+        showToast(data.message || 'Plan request cancelled.', 'success');
+        setTimeout(() => window.location.reload(), 700);
+      })
+      .catch(() => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        showToast('Could not reach the server. Please try again.', 'error');
+      });
+  }
+
   /** Expose plan selection for the renewal grid */
   function selectRenewalPlan(card, plan) {
     selectedPlan = plan;
     document.querySelectorAll('#member-membership .plan-card').forEach(c => c.classList.remove('selected'));
     card.classList.add('selected');
-    showToast('Plan selected: ' + plan.charAt(0).toUpperCase() + plan.slice(1), 'success');
+    const label = PLAN_DATA[plan] ? PLAN_DATA[plan].name : (plan.charAt(0).toUpperCase() + plan.slice(1));
+    showToast('Plan selected: ' + label, 'success');
     openPlanModal(plan);
   }
 
   // ── Membership plans: "what's included" modal ──
-  const PLAN_INFO = {
-    daily: {
-      title: 'Daily',
-      price: '₱100',
-      subtitle: 'Single-day access — up to 2 hours, great for drop-ins',
-      items: [
-        'All Access to Gym equipment for 1 day (up to 2 hours per visit)',
-        'Gym floor access for up to 2 hours on your visit day',
-        'Use of all cardio and strength equipment',
-        'Locker use during your visit',
-        'Access to Boxing, Strengthening, Weight Loss & Cardio Zone',
-        'No long-term commitment',
-      ],
-    },
-    weekly: {
-      title: 'Weekly',
-      price: '₱450',
-      subtitle: '2 weeks of unlimited access, any time, every day',
-      items: [
-        'All Access to Gym equipment for 14 days',
-        'Unlimited-length visits, any time, every day for 14 days',
-        'No 2-hour cap — stay as long as you like per visit',
-        'Attendance tracking in your dashboard',
-        'Access to Boxing, Strengthening, Weight Loss & Cardio Zone',
-        'Student discount available with a valid school ID',
-        'Great for short-term visitors or a trial run',
-      ],
-    },
-    monthly: {
-      title: 'Monthly',
-      price: '₱900',
-      subtitle: '1 month of unlimited access, any time, every day',
-      items: [
-        'All Access to Gym equipment for 30 days',
-        'Unlimited-length visits, any time, every day for 30 days',
-        'Attendance & Body Goals tracking in your dashboard',
-        'Eligible to request a coach (Ronel Samar or Jonathan Natividad)',
-        'Student discount available with a valid school ID',
-        'Auto-renewal reminders before your plan expires',
-      ],
-    },
-    yearly: {
-      title: 'Yearly ⭐',
-      price: '₱7,000',
-      subtitle: '1 year of unlimited access, any time, every day',
-      items: [
-        'All Access to Gym equipment for 365 days',
-        'Unlimited-length visits, any time, every day for 365 days',
-        '2 free personal coaching sessions',
-        'Members-only yearly gear kit',
-        'Price locked for the entire year — no rate increases',
-        'Attendance & Body Goals tracking in your dashboard',
-        'Student discount available with a valid school ID',
-      ],
-    },
-  };
-
+  // Sourced from PLAN_DATA (built from #member-plans-data), which mirrors
+  // whatever admin/staff have set for each plan's description and
+  // inclusions under Settings → Manage Content.
   let planModalKey = null;
 
   function openPlanModal(key) {
-    const info = PLAN_INFO[key];
+    const info = PLAN_DATA[key];
     if (!info) return;
     planModalKey = key;
 
@@ -638,10 +659,10 @@ const MemberModule = (() => {
     const subtitle = document.getElementById('plan-modal-subtitle');
     const list     = document.getElementById('plan-modal-list');
 
-    if (title)    title.textContent = info.title.toUpperCase();
+    if (title)    title.textContent = info.name.toUpperCase();
     if (price)    price.textContent = _planPriceText(key, _isStudentSelected());
-    if (subtitle) subtitle.textContent = info.subtitle;
-    if (list)     list.innerHTML = info.items.map(i => `<li>${i}</li>`).join('');
+    if (subtitle) subtitle.textContent = info.description || '';
+    if (list)     list.innerHTML = (info.inclusions || []).map(i => `<li>${_escapeHtml(i)}</li>`).join('');
 
     openModal('plan-modal');
   }
@@ -653,82 +674,32 @@ const MemberModule = (() => {
     selectedPlan = planModalKey;
     document.querySelectorAll('#member-membership .plan-card').forEach(c => c.classList.remove('selected'));
     if (card) card.classList.add('selected');
-    showToast('Plan selected: ' + planModalKey.charAt(0).toUpperCase() + planModalKey.slice(1), 'success');
+    const label = PLAN_DATA[planModalKey] ? PLAN_DATA[planModalKey].name : (planModalKey.charAt(0).toUpperCase() + planModalKey.slice(1));
+    showToast('Plan selected: ' + label, 'success');
     closeModal('plan-modal');
   }
 
   // ── Services tab: "what's included" modal ──
-  const SERVICE_INFO = {
-    boxing: {
-      icon: '🥊',
-      title: 'Boxing',
-      subtitle: 'Gloves, punching bags, sparring',
-      items: [
-        'Access to boxing area',
-        ' Boxing gloves (rental or bring your own)',
-        ' Hand wraps (optional purchase)',
-        ' Punching bags & speed bags',
-        ' Group boxing classes or personal coaching',
-        ' Sparring sessions (for advanced members)',
-        ' Locker room access',
-        ' Showers and changing rooms'
-      ],
-    },
-    strengthening: {
-      icon: '💪',
-      title: 'Strengthening',
-      subtitle: 'Free weights, machines, resistance training',
-      items: [
-        ' Access to all strength equipment',
-        ' Free weights (dumbbells & barbells)',
-        ' Resistance machines',
-        ' Bench press & squat racks',
-        ' Locker room access',
-        ' Showers and changing rooms'
-      ],
-    },
-    weightloss: {
-      icon: '🔥',
-      title: 'Weight Loss',
-      subtitle: 'Fat-burning circuits and programs',
-      items: [
-        ' Cardio equipment access',
-        ' Fat-burning workout programs',
-        ' Circuit training sessions',
-        ' Functional training equipment',
-        ' Body composition assessment',
-        ' Locker room access',
-        ' Showers and changing rooms'
-      ],
-    },
-    cardio: {
-      icon: '🚴',
-      title: 'Cardio Zone',
-      subtitle: 'Bikes, treadmills, rowing',
-      items: [
-        ' Unlimited use of cardio machines',
-        ' Treadmills, bikes, ellipticals, rowers',
-        ' Heart rate monitoring (if available)',
-        ' Warm-up & cool-down area',
-        ' Locker room access',
-        ' Showers and changing rooms'
-      ],
-    },
-  };
-
-  function openServiceModal(key) {
-    const info = SERVICE_INFO[key];
+  // Sourced from SERVICE_DATA (built from #member-services-data), which
+  // mirrors whatever admin/staff have set under Settings → Manage Content.
+  // Services only carry a name + description (no per-line inclusions list
+  // in the data model), so the "What's included" bullet list is hidden
+  // when there's nothing to show.
+  function openServiceModal(id) {
+    const info = SERVICE_DATA[id];
     if (!info) return;
 
-    const icon     = document.getElementById('service-modal-icon');
-    const title    = document.getElementById('service-modal-title');
-    const subtitle = document.getElementById('service-modal-subtitle');
-    const list     = document.getElementById('service-modal-list');
+    const icon      = document.getElementById('service-modal-icon');
+    const title     = document.getElementById('service-modal-title');
+    const subtitle  = document.getElementById('service-modal-subtitle');
+    const listTitle = document.getElementById('service-modal-list-title');
+    const list      = document.getElementById('service-modal-list');
 
-    if (icon)     icon.textContent = info.icon;
-    if (title)    title.textContent = info.title.toUpperCase();
-    if (subtitle) subtitle.textContent = info.subtitle;
-    if (list)     list.innerHTML = info.items.map(i => `<li>${i}</li>`).join('');
+    if (icon)     icon.textContent = '🛎️';
+    if (title)    title.textContent = info.name.toUpperCase();
+    if (subtitle) subtitle.textContent = info.description || '';
+    if (list)     list.innerHTML = '';
+    if (listTitle) listTitle.style.display = 'none';
 
     openModal('service-modal');
   }
@@ -741,7 +712,8 @@ const MemberModule = (() => {
     toggleStudentIdField, previewStudentId, toggleCoachField,
     togglePaymentProofField, previewGcashProof, submitPaymentMethod,
     confirmSubmitPayment, cancelSubmitPayment, closePaymentSubmitSuccessModal,
-    openPlanModal, selectPlanFromModal, changeAttendanceMonth
+    openPlanModal, selectPlanFromModal, changeAttendanceMonth,
+    withdrawPlanRequest, confirmWithdrawRequest, cancelWithdrawRequest
   };
 })();
 
@@ -774,6 +746,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.confirmSubmitPayment    = MemberModule.confirmSubmitPayment;
   window.cancelSubmitPayment     = MemberModule.cancelSubmitPayment;
   window.closePaymentSubmitSuccessModal = MemberModule.closePaymentSubmitSuccessModal;
+  window.withdrawPlanRequest     = MemberModule.withdrawPlanRequest;
+  window.confirmWithdrawRequest  = MemberModule.confirmWithdrawRequest;
+  window.cancelWithdrawRequest   = MemberModule.cancelWithdrawRequest;
   window.openPlanModal        = MemberModule.openPlanModal;
   window.selectPlanFromModal  = MemberModule.selectPlanFromModal;
   window.changeAttendanceMonth = MemberModule.changeAttendanceMonth;

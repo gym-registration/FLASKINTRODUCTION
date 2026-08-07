@@ -481,6 +481,228 @@ function _val(id) {
 
 
 /* ════════════════════════════════════════════════
+   4b. CONTENT MANAGER — Manage Gym Content
+   Shared by staff-dashboard.html and admin-dashboard.html.
+   Lets staff/admin add/edit/delete membership plans, services,
+   and equipment (name, price, description, inclusions, picture).
+════════════════════════════════════════════════ */
+const ContentManager = (() => {
+
+  const TYPES = ['plans', 'services', 'equipment'];
+  const ENDPOINTS = {
+    plans:     { list: '/api/content/plans',     save: '/api/content/plans/save',     del: id => `/api/content/plans/${id}/delete` },
+    services:  { list: '/api/content/services',  save: '/api/content/services/save',  del: id => `/api/content/services/${id}/delete` },
+    equipment: { list: '/api/content/equipment', save: '/api/content/equipment/save', del: id => `/api/content/equipment/${id}/delete` },
+  };
+  const LABELS = { plans: 'Membership Plan', services: 'Service', equipment: 'Equipment' };
+
+  let currentType = 'plans';
+  let cache = { plans: null, services: null, equipment: null };
+  let pendingDelete = null; // { type, id }
+  let loaded = false;
+
+  function ensureLoaded() {
+    if (loaded) return;
+    loaded = true;
+    showType('plans');
+  }
+
+  function showType(type) {
+    currentType = type;
+    document.querySelectorAll('.content-subtab').forEach(el => {
+      el.classList.toggle('active', el.dataset.contentType === type);
+    });
+    TYPES.forEach(t => {
+      const grid = document.getElementById('content-grid-' + t);
+      if (grid) grid.style.display = (t === type) ? 'grid' : 'none';
+    });
+    if (cache[type] === null) {
+      _fetchType(type);
+    } else {
+      _renderGrid(type, cache[type]);
+    }
+  }
+
+  function _fetchType(type) {
+    const grid = document.getElementById('content-grid-' + type);
+    if (grid) grid.innerHTML = '<div class="content-empty">Loading…</div>';
+    fetch(ENDPOINTS[type].list)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) { showToast(data.error || 'Could not load content.', 'error'); return; }
+        cache[type] = data.items;
+        if (currentType === type) _renderGrid(type, data.items);
+      })
+      .catch(() => showToast('Could not reach the server.', 'error'));
+  }
+
+  function refresh(type) {
+    cache[type] = null;
+    if (currentType === type) _fetchType(type);
+  }
+
+  function _renderGrid(type, items) {
+    const grid = document.getElementById('content-grid-' + type);
+    if (!grid) return;
+    if (!items.length) {
+      grid.innerHTML = `<div class="content-empty">No ${LABELS[type].toLowerCase()}s yet. Click "+ Add New" to create one.</div>`;
+      return;
+    }
+    grid.innerHTML = items.map(item => _cardHtml(type, item)).join('');
+  }
+
+  function _esc(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function _cardHtml(type, item) {
+    const img = item.image_path
+      ? `background-image:url('/static/${item.image_path}')`
+      : '';
+    const icon = item.image_path ? '' : (type === 'plans' ? '💳' : type === 'services' ? '🛎️' : '🏋️');
+    const priceLine = type === 'plans'
+      ? `<div class="content-card-price">₱${Number(item.price).toLocaleString()} / ${item.duration_days} day${item.duration_days == 1 ? '' : 's'}</div>`
+      : '';
+    let inclusionsHtml = '';
+    if (type === 'plans' && item.inclusions) {
+      const lines = item.inclusions.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 4);
+      if (lines.length) inclusionsHtml = `<ul class="content-card-inclusions">${lines.map(l => `<li>${_esc(l)}</li>`).join('')}</ul>`;
+    }
+    const statusBadge = item.is_active
+      ? '<span class="badge badge-green">ACTIVE</span>'
+      : '<span class="badge badge-muted">HIDDEN</span>';
+    return `
+      <div class="content-card" data-id="${item.id}">
+        <div class="content-card-img" style="${img}">${img ? '' : icon}${statusBadge}</div>
+        <div class="content-card-body">
+          <div class="content-card-name">${_esc(item.name)}</div>
+          ${priceLine}
+          ${item.description ? `<div class="content-card-desc">${_esc(item.description)}</div>` : ''}
+          ${inclusionsHtml}
+          <div class="content-card-actions">
+            <button class="btn btn-outline" onclick='ContentManager.openForm("${type}", ${JSON.stringify(item).replace(/'/g, "&#39;")})'>EDIT</button>
+            <button class="btn btn-outline" style="color:var(--red);border-color:rgba(230,30,37,0.4);" onclick="ContentManager.confirmDelete('${type}', ${item.id}, '${_esc(item.name).replace(/'/g, "\\'")}')">DELETE</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function openForm(type, item) {
+    currentType = type;
+    document.getElementById('cf-type').value = type;
+    document.getElementById('cf-id').value = item ? item.id : '';
+    document.getElementById('content-form-title').textContent = item ? `EDIT ${LABELS[type].toUpperCase()}` : `ADD ${LABELS[type].toUpperCase()}`;
+    document.getElementById('cf-name').value = item ? item.name : '';
+    document.getElementById('cf-description').value = item ? item.description : '';
+    document.getElementById('cf-sort-order').value = item ? item.sort_order : 0;
+    document.getElementById('cf-active').checked = item ? !!item.is_active : true;
+    document.getElementById('cf-image-input').value = '';
+    document.getElementById('cf-remove-image').checked = false;
+
+    const isPlan = type === 'plans';
+    document.getElementById('cf-plan-fields').style.display = isPlan ? 'grid' : 'none';
+    document.getElementById('cf-inclusions-wrap').style.display = isPlan ? 'block' : 'none';
+    if (isPlan) {
+      document.getElementById('cf-price').value = item ? item.price : '';
+      document.getElementById('cf-duration').value = item ? item.duration_days : '';
+      document.getElementById('cf-inclusions').value = item ? item.inclusions : '';
+    }
+
+    const preview = document.getElementById('cf-image-preview');
+    const removeWrap = document.getElementById('cf-remove-image-wrap');
+    if (item && item.image_path) {
+      preview.style.backgroundImage = `url('/static/${item.image_path}')`;
+      preview.textContent = '';
+      removeWrap.style.display = 'block';
+    } else {
+      preview.style.backgroundImage = '';
+      preview.textContent = '🖼️';
+      removeWrap.style.display = 'none';
+    }
+
+    openModal('content-form-modal');
+  }
+
+  function previewImage(input) {
+    const preview = document.getElementById('cf-image-preview');
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.style.backgroundImage = `url('${e.target.result}')`;
+      preview.textContent = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function submit() {
+    const type = document.getElementById('cf-type').value;
+    const id = document.getElementById('cf-id').value;
+    const name = _val('cf-name');
+    if (!name) { showToast('Name is required.', 'error'); return; }
+
+    const fd = new FormData();
+    if (id) fd.append('id', id);
+    fd.append('name', name);
+    fd.append('description', document.getElementById('cf-description').value.trim());
+    fd.append('sort_order', document.getElementById('cf-sort-order').value || '0');
+    fd.append('is_active', document.getElementById('cf-active').checked ? 'true' : 'false');
+    fd.append('remove_image', document.getElementById('cf-remove-image').checked ? 'true' : 'false');
+    const file = document.getElementById('cf-image-input').files[0];
+    if (file) fd.append('image', file);
+
+    if (type === 'plans') {
+      const price = document.getElementById('cf-price').value;
+      const duration = document.getElementById('cf-duration').value;
+      if (!price || Number(price) < 0) { showToast('Enter a valid price.', 'error'); return; }
+      if (!duration || Number(duration) <= 0) { showToast('Enter a valid duration in days.', 'error'); return; }
+      fd.append('price', price);
+      fd.append('duration_days', duration);
+      fd.append('inclusions', document.getElementById('cf-inclusions').value);
+    }
+
+    fetch(ENDPOINTS[type].save, { method: 'POST', body: fd })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) { showToast(data.error || 'Could not save.', 'error'); return; }
+        showToast(data.message || 'Saved.', 'success');
+        closeModal('content-form-modal');
+        refresh(type);
+      })
+      .catch(() => showToast('Could not reach the server.', 'error'));
+  }
+
+  function confirmDelete(type, id, name) {
+    pendingDelete = { type, id };
+    const msgEl = document.getElementById('content-delete-message');
+    if (msgEl) msgEl.textContent = `Are you sure you want to delete "${name}"? This cannot be undone.`;
+    openModal('content-delete-modal');
+  }
+
+  function cancelDelete() {
+    pendingDelete = null;
+    closeModal('content-delete-modal');
+  }
+
+  function performDelete() {
+    if (!pendingDelete) return;
+    const { type, id } = pendingDelete;
+    fetch(ENDPOINTS[type].del(id), { method: 'POST' })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) { showToast((data && data.error) || 'Could not delete.', 'error'); return; }
+        showToast(data.message || 'Deleted.', 'success');
+        refresh(type);
+      })
+      .catch(() => showToast('Could not reach the server.', 'error'))
+      .finally(() => { pendingDelete = null; closeModal('content-delete-modal'); });
+  }
+
+  return { ensureLoaded, showType, openForm, previewImage, submit, confirmDelete, cancelDelete, performDelete, refresh };
+})();
+
+
+/* ════════════════════════════════════════════════
    5. TOAST SYSTEM
 ════════════════════════════════════════════════ */
 function showToast(msg, type = 'success') {
@@ -511,6 +733,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.submitProfileUpdate  = submitProfileUpdate;
   window.filterTable   = filterTable;
   window.togglePasswordVisibility = togglePasswordVisibility;
+  window.ContentManager = ContentManager;
   window.goTo          = (screen) => Navigation.goToScreen(screen);
   // selectPlan is re-assigned per page (login/member) where relevant; keep a fallback
   if (!window.selectPlan) window.selectPlan = selectPlan;
