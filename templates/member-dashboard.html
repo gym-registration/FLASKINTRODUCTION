@@ -250,9 +250,16 @@
                 <label class="form-label">Choose a Coach</label>
                 <select class="form-input" id="member-renew-coach-name">
                   <option value="">Select coach...</option>
-                  <option value="Ronel Samar">Ronel Samar</option>
-                  <option value="Jonathan Natividad">Jonathan Natividad</option>
+                  {% for c in coaches %}
+                  <option value="{{ c.name }}" {% if c.is_full %}disabled{% endif %}>
+                    {{ c.name }} — {{ c.available_days | join(', ') if c.available_days else 'No days set' }}
+                    {% if c.is_full %}(FULL){% else %}({{ c.slots_left }} slot{{ 's' if c.slots_left != 1 else '' }} left){% endif %}
+                  </option>
+                  {% endfor %}
                 </select>
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+                  Days shown are when each coach is available at the gym.
+                </div>
               </div>
               <div style="font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:4px;line-height:1.6;">
                 Submitting sends this plan as a request. Once submitted, go to the
@@ -503,35 +510,46 @@
     <!-- ── Services ─────────────────────── -->
     <div id="member-services" class="sub-panel">
       <div class="page-header"><div><div class="page-title">GYM SERVICES</div></div></div>
-      <div class="grid-4">
-        {% for s in content_services %}
-        <div class="panel service-card" onclick="openServiceModal({{ s.id }})">
-          <div class="panel-body" style="text-align:center;">
-            {% if s.image_path %}
-            <div style="width:56px;height:56px;margin:0 auto 10px;border-radius:8px;background-size:cover;background-position:center;background-image:url('{{ url_for('static', filename=s.image_path) }}');"></div>
-            {% else %}
-            <div style="font-size:36px;margin-bottom:10px;">🛎️</div>
-            {% endif %}
-            <div class="panel-title">{{ s.name }}</div>
-            {% if s.description %}<div style="font-size:12px;color:var(--muted);margin-top:6px;">{{ s.description }}</div>{% endif %}
+
+      {% for category, category_icon, items in services_by_category %}
+      <div class="equip-category">
+        <div class="equip-category-title"><span class="equip-category-icon">{{ category_icon }}</span> {{ category }}</div>
+        <div class="grid-4">
+          {% for s in items %}
+          <div class="panel service-card" onclick="openServiceModal({{ s.id }})">
+            <div class="panel-body" style="text-align:center;">
+              {% if s.image_path %}
+              <div style="width:56px;height:56px;margin:0 auto 10px;border-radius:8px;background-size:cover;background-position:center;background-image:url('{{ url_for('static', filename=s.image_path) }}');"></div>
+              {% else %}
+              <div style="font-size:36px;margin-bottom:10px;">{{ s.icon or '🛎️' }}</div>
+              {% endif %}
+              <div class="panel-title">{{ s.name }}</div>
+              {% if s.description %}<div style="font-size:12px;color:var(--muted);margin-top:6px;">{{ s.description }}</div>{% endif %}
+            </div>
           </div>
+          {% endfor %}
         </div>
-        {% else %}
-        <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:20px;">No services listed yet.</div>
-        {% endfor %}
       </div>
+      {% else %}
+      <div style="text-align:center;color:var(--muted);padding:20px;">No services listed yet.</div>
+      {% endfor %}
       <script id="member-services-data" type="application/json">{{ services_data|tojson }}</script>
 
       <div class="panel" style="margin-top:20px;">
         <div class="panel-header"><div class="panel-title">Gym Machines and Equipment</div></div>
         <div class="panel-body">
-          <div class="equip-grid">
-            {% for eq in content_equipment %}
-            <div class="equip-item"><span class="equip-item-icon">🏋️</span> {{ eq.name }}</div>
-            {% else %}
-            <div style="color:var(--muted);">No equipment listed yet.</div>
-            {% endfor %}
+          {% for category, category_icon, items in equipment_by_category %}
+          <div class="equip-category">
+            <div class="equip-category-title"><span class="equip-category-icon">{{ category_icon }}</span> {{ category }}</div>
+            <div class="equip-grid">
+              {% for eq in items %}
+              <div class="equip-item"><span class="equip-item-icon">{{ eq.icon or '🏋️' }}</span> {{ eq.name }}</div>
+              {% endfor %}
+            </div>
           </div>
+          {% else %}
+          <div style="color:var(--muted);">No equipment listed yet.</div>
+          {% endfor %}
         </div>
       </div>
     </div><!-- /member-services -->

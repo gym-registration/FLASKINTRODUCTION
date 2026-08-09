@@ -167,7 +167,7 @@
     </div>
   <div class="facility-grid">
   {% for eq in equipment %}
-  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename=eq.image_path) if eq.image_path else url_for('static', filename='images/facility-weight.png') }}');"><span class="fi">🏋️</span><span class="label">{{ eq.name }}</span></div>
+  <div class="facility-tile" style="background-image:url('{{ url_for('static', filename=eq.image_path) if eq.image_path else url_for('static', filename='images/facility-weight.png') }}');"><span class="fi">{{ eq.icon or '🏋️' }}</span><span class="label">{{ eq.name }}</span></div>
   {% else %}
   <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:30px;">Facility photos coming soon.</div>
   {% endfor %}
@@ -187,7 +187,7 @@
     </div>
     <div class="facility-grid">
       {% for svc in services %}
-      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename=svc.image_path) if svc.image_path else url_for('static', filename='images/facility-reception.png') }}');"><span class="fi">🛎️</span><span class="label">{{ svc.name }}</span></div>
+      <div class="facility-tile" style="background-image:url('{{ url_for('static', filename=svc.image_path) if svc.image_path else url_for('static', filename='images/facility-reception.png') }}');"><span class="fi">{{ svc.icon or '🛎️' }}</span><span class="label">{{ svc.name }}</span></div>
       {% endfor %}
     </div>
   </div>

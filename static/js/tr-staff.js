@@ -184,6 +184,33 @@ const StaffModule = (() => {
   }
 
   /** Check a member in via the given input field's id, or a raw identifier */
+  /** Save a coach's available days + max member capacity from the Coach tab.
+   *  Called as the onsubmit handler of each coach card's form. */
+  function submitCoachUpdate(event) {
+    event.preventDefault();
+    const form = event.target;
+    const btn  = form.querySelector('button[type="submit"]');
+    const originalLabel = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+
+    fetch('/staff/coach/update', { method: 'POST', body: new FormData(form) })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        if (!ok || !data.success) {
+          showToast(data.error || 'Could not update coach.', 'error');
+          return;
+        }
+        showToast(data.message || 'Coach updated.', 'success');
+        setTimeout(() => window.location.reload(), 700);
+      })
+      .catch(() => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        showToast('Could not reach the server. Please try again.', 'error');
+      });
+    return false;
+  }
+
   function checkInMember(idOrValue) {
     const identifier = _resolveIdentifier(idOrValue);
     if (!identifier) { showToast('Please select a member', 'error'); return; }
@@ -352,7 +379,7 @@ const StaffModule = (() => {
     window.location.href = `/staff/reports/${reportType}.csv${query}`;
   }
 
-  return { init, tab, promptRecordPayment, confirmRecordPayment, cancelRecordPayment, closePaymentRecordedModal, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput, generateReport };
+  return { init, tab, promptRecordPayment, confirmRecordPayment, cancelRecordPayment, closePaymentRecordedModal, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput, generateReport, submitCoachUpdate };
 })();
 
 
@@ -377,4 +404,5 @@ document.addEventListener('DOMContentLoaded', () => {
   window.viewPaymentProof      = (url, title) => StaffModule.viewPaymentProof(url, title);
   window.onPayMemberInput      = (value) => StaffModule.onPayMemberInput(value);
   window.generateReport        = (reportType) => StaffModule.generateReport(reportType);
+  window.submitCoachUpdate     = (event) => StaffModule.submitCoachUpdate(event);
 });

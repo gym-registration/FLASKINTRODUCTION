@@ -556,15 +556,20 @@ const ContentManager = (() => {
   }
 
   function _cardHtml(type, item) {
+    const isPlan = type === 'plans';
     const img = item.image_path
       ? `background-image:url('/static/${item.image_path}')`
       : '';
-    const icon = item.image_path ? '' : (type === 'plans' ? '💳' : type === 'services' ? '🛎️' : '🏋️');
-    const priceLine = type === 'plans'
+    const fallbackIcon = isPlan ? '💳' : (type === 'services' ? '🛎️' : '🏋️');
+    const icon = item.image_path ? '' : (item.icon || fallbackIcon);
+    const priceLine = isPlan
       ? `<div class="content-card-price">₱${Number(item.price).toLocaleString()} / ${item.duration_days} day${item.duration_days == 1 ? '' : 's'}</div>`
       : '';
+    const categoryBadge = (!isPlan && item.category)
+      ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);">${_esc(item.category)}</div>`
+      : '';
     let inclusionsHtml = '';
-    if (type === 'plans' && item.inclusions) {
+    if (isPlan && item.inclusions) {
       const lines = item.inclusions.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 4);
       if (lines.length) inclusionsHtml = `<ul class="content-card-inclusions">${lines.map(l => `<li>${_esc(l)}</li>`).join('')}</ul>`;
     }
@@ -576,6 +581,7 @@ const ContentManager = (() => {
         <div class="content-card-img" style="${img}">${img ? '' : icon}${statusBadge}</div>
         <div class="content-card-body">
           <div class="content-card-name">${_esc(item.name)}</div>
+          ${categoryBadge}
           ${priceLine}
           ${item.description ? `<div class="content-card-desc">${_esc(item.description)}</div>` : ''}
           ${inclusionsHtml}
@@ -608,6 +614,15 @@ const ContentManager = (() => {
       document.getElementById('cf-inclusions').value = item ? item.inclusions : '';
     }
 
+    // Category + icon (services & equipment only)
+    const catEqWrap = document.getElementById('cf-category-icon-wrap');
+    if (catEqWrap) catEqWrap.style.display = isPlan ? 'none' : 'grid';
+    const catInput  = document.getElementById('cf-category');
+    const iconInput = document.getElementById('cf-icon');
+    if (catInput)  catInput.value  = item ? (item.category || '') : '';
+    if (iconInput) iconInput.value = item ? (item.icon || '') : '';
+    _refreshIconPickList(type);
+
     const preview = document.getElementById('cf-image-preview');
     const removeWrap = document.getElementById('cf-remove-image-wrap');
     if (item && item.image_path) {
@@ -635,6 +650,54 @@ const ContentManager = (() => {
     reader.readAsDataURL(file);
   }
 
+  // ── Category suggestions + icon quick-pick (services & equipment) ──
+  const CATEGORY_SUGGESTIONS = {
+    equipment: ['Boxing', 'Strengthening', 'Cardio Zone', 'Weight Loss', 'Functional Training', 'General'],
+    services:  ['Boxing', 'Strengthening', 'Cardio Zone', 'Weight Loss', 'Coaching', 'Membership Perks', 'Facilities', 'Classes', 'General'],
+  };
+  const ICON_SUGGESTIONS = {
+    equipment: ['🏋️', '💪', '🥊', '🏃', '🚴', '🤸', '🪢', '🦵', '🔩', '⬇️', '🔧', '🎯', '🧘', '🔥'],
+    services:  ['🥊', '💪', '🔥', '🏃', '🛎️', '🧑‍🏫', '🥤', '🚿', '🅿️', '📅', '🩺'],
+  };
+  let realCategoriesCache = null; // categories actually in use, fetched from the server
+
+  function _refreshIconPickList(type) {
+    const datalist = document.getElementById('cf-category-list');
+    if (datalist) {
+      // Show real, already-used categories first (so Services and
+      // Equipment stay spelled identically and keep grouping together on
+      // the member dashboard), then fall back to curated suggestions.
+      const used = realCategoriesCache || [];
+      const suggested = CATEGORY_SUGGESTIONS[type] || [];
+      const merged = [...used];
+      suggested.forEach(c => { if (!merged.some(m => m.toLowerCase() === c.toLowerCase())) merged.push(c); });
+      datalist.innerHTML = merged.map(c => `<option value="${_esc(c)}"></option>`).join('');
+    }
+    const iconRow = document.getElementById('cf-icon-picks');
+    if (iconRow) {
+      const icons = ICON_SUGGESTIONS[type] || [];
+      iconRow.innerHTML = icons.map(i =>
+        `<button type="button" class="icon-pick-btn" onclick="ContentManager.pickIcon('${i}')">${i}</button>`
+      ).join('');
+    }
+    if (realCategoriesCache === null) {
+      fetch('/api/content/categories')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            realCategoriesCache = data.categories;
+            _refreshIconPickList(type); // re-render datalist now that real categories are in
+          }
+        })
+        .catch(() => {}); // non-fatal — curated suggestions still work
+    }
+  }
+
+  function pickIcon(emoji) {
+    const iconInput = document.getElementById('cf-icon');
+    if (iconInput) iconInput.value = emoji;
+  }
+
   function submit() {
     const type = document.getElementById('cf-type').value;
     const id = document.getElementById('cf-id').value;
@@ -650,6 +713,13 @@ const ContentManager = (() => {
     fd.append('remove_image', document.getElementById('cf-remove-image').checked ? 'true' : 'false');
     const file = document.getElementById('cf-image-input').files[0];
     if (file) fd.append('image', file);
+
+    if (type !== 'plans') {
+      const catInput  = document.getElementById('cf-category');
+      const iconInput = document.getElementById('cf-icon');
+      fd.append('category', catInput ? catInput.value.trim() : '');
+      fd.append('icon', iconInput ? iconInput.value.trim() : '');
+    }
 
     if (type === 'plans') {
       const price = document.getElementById('cf-price').value;
@@ -667,6 +737,7 @@ const ContentManager = (() => {
         if (!ok || !data.success) { showToast(data.error || 'Could not save.', 'error'); return; }
         showToast(data.message || 'Saved.', 'success');
         closeModal('content-form-modal');
+        if (type !== 'plans') realCategoriesCache = null; // pick up any newly-typed category next time the form opens
         refresh(type);
       })
       .catch(() => showToast('Could not reach the server.', 'error'));
@@ -698,7 +769,7 @@ const ContentManager = (() => {
       .finally(() => { pendingDelete = null; closeModal('content-delete-modal'); });
   }
 
-  return { ensureLoaded, showType, openForm, previewImage, submit, confirmDelete, cancelDelete, performDelete, refresh };
+  return { ensureLoaded, showType, openForm, previewImage, pickIcon, submit, confirmDelete, cancelDelete, performDelete, refresh };
 })();
 
 

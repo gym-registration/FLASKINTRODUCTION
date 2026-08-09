@@ -594,6 +594,19 @@
       <textarea class="form-input" id="cf-description" rows="2" style="resize:vertical;" placeholder="Short description shown to members"></textarea>
     </div>
 
+    <div class="form-row" id="cf-category-icon-wrap" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <input class="form-input" id="cf-category" list="cf-category-list" placeholder="e.g. Boxing, Strengthening">
+        <datalist id="cf-category-list"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Icon</label>
+        <input class="form-input" id="cf-icon" maxlength="8" placeholder="🏋️" style="text-align:center;">
+        <div id="cf-icon-picks" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;"></div>
+      </div>
+    </div>
+
     <div class="form-group" id="cf-inclusions-wrap" style="display:none;">
       <label class="form-label">Inclusions (one per line)</label>
       <textarea class="form-input" id="cf-inclusions" rows="4" style="resize:vertical;" placeholder="Gym Equipment Access&#10;Locker Access&#10;Free Towel Service"></textarea>

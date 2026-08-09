@@ -1499,6 +1499,19 @@ body.home-page { overflow-x: hidden; }
 .content-card-actions { display: flex; gap: 8px; margin-top: 10px; }
 .content-card-actions .btn { flex: 1; padding: 8px 10px; font-size: 11.5px; justify-content: center; }
 
+/* Icon quick-pick row (content-form-modal, services & equipment) */
+.icon-pick-btn {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.icon-pick-btn:hover { border-color: var(--red); background: rgba(230,30,37,0.08); }
+
 .content-empty {
   grid-column: 1 / -1; text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px;
 }

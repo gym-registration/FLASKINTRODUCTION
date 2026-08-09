@@ -695,7 +695,7 @@ const MemberModule = (() => {
     const listTitle = document.getElementById('service-modal-list-title');
     const list      = document.getElementById('service-modal-list');
 
-    if (icon)     icon.textContent = '🛎️';
+    if (icon)     icon.textContent = info.icon || '🛎️';
     if (title)    title.textContent = info.name.toUpperCase();
     if (subtitle) subtitle.textContent = info.description || '';
     if (list)     list.innerHTML = '';

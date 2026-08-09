@@ -4,6 +4,7 @@ import string
 import calendar
 import csv
 import io
+from collections import OrderedDict
 from dotenv import load_dotenv
 load_dotenv()  # Reads variables from a .env file in the project root, if present
 
@@ -329,6 +330,28 @@ class Membership(db.Model):
     plan   = db.relationship('MembershipPlan', back_populates='memberships')
 
 
+class Coach(db.Model):
+    """A personal coach members can request. Availability (days) and
+    capacity (max members) are editable by staff from the Coach tab."""
+    __tablename__  = 'coaches'
+    id             = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name           = db.Column(db.String(60), nullable=False, unique=True)
+    available_days = db.Column(db.String(40), nullable=False, default='')  # e.g. "Mon,Wed,Fri"
+    max_members    = db.Column(db.Integer, nullable=False, default=10)
+    is_active      = db.Column(db.Boolean, nullable=False, default=True)
+    updated_at     = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
+                               onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def available_days_list(self):
+        if not self.available_days:
+            return []
+        return [d.strip() for d in self.available_days.split(',') if d.strip()]
+
+    def __repr__(self):
+        return f"<Coach {self.name}>"
+
+
 class Payment(db.Model):
     __tablename__    = 'payments'
     id               = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -409,6 +432,8 @@ class GymService(db.Model):
     name         = db.Column(db.String(80), nullable=False)
     description  = db.Column(db.Text, nullable=True)
     image_path   = db.Column(db.String(255), nullable=True)
+    category     = db.Column(db.String(60), nullable=True)   # e.g. "Boxing", "Coaching"
+    icon         = db.Column(db.String(8), nullable=True)    # single emoji shown on chips/cards
     is_active    = db.Column(db.Boolean, nullable=False, default=True)
     sort_order   = db.Column(db.Integer, nullable=False, default=0)
     created_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -427,6 +452,8 @@ class GymEquipment(db.Model):
     name         = db.Column(db.String(80), nullable=False)
     description  = db.Column(db.Text, nullable=True)
     image_path   = db.Column(db.String(255), nullable=True)
+    category     = db.Column(db.String(60), nullable=True)   # e.g. "Boxing", "Strengthening"
+    icon         = db.Column(db.String(8), nullable=True)    # single emoji shown on chips/cards
     is_active    = db.Column(db.Boolean, nullable=False, default=True)
     sort_order   = db.Column(db.Integer, nullable=False, default=0)
     created_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -482,10 +509,17 @@ def _plan_to_dict(p):
     }
 
 
+DEFAULT_SERVICE_ICON   = '🛎️'
+DEFAULT_EQUIPMENT_ICON = '🏋️'
+DEFAULT_CATEGORY       = 'General'
+
+
 def _service_to_dict(s):
     return {
         'id': s.id, 'name': s.name, 'description': s.description or '',
         'image_path': s.image_path or '', 'is_active': s.is_active,
+        'category': s.category or DEFAULT_CATEGORY,
+        'icon': s.icon or DEFAULT_SERVICE_ICON,
         'sort_order': s.sort_order,
     }
 
@@ -494,8 +528,56 @@ def _equipment_to_dict(e):
     return {
         'id': e.id, 'name': e.name, 'description': e.description or '',
         'image_path': e.image_path or '', 'is_active': e.is_active,
+        'category': e.category or DEFAULT_CATEGORY,
+        'icon': e.icon or DEFAULT_EQUIPMENT_ICON,
         'sort_order': e.sort_order,
     }
+
+
+CATEGORY_ICONS = {
+    'boxing': '🥊', 'strengthening': '💪', 'cardio zone': '🏃', 'weight loss': '🔥',
+    'functional training': '🤸', 'coaching': '🧑‍🏫', 'membership perks': '🎁',
+    'facilities': '🏢', 'classes': '📅', 'general': '🛎️',
+}
+
+
+def _group_content_by_category(items, default_icon='🛎️'):
+    """Group a list of GymService/GymEquipment rows into an ordered list of
+    (category_name, category_icon, [items]) tuples, preserving each item's
+    sort_order and putting categories in first-seen order. Items with no
+    category fall into a trailing "General" group. The category header
+    icon comes from a small known-category lookup (falling back to the
+    first item's own icon, then a generic default) so it reads distinctly
+    from each item's individual icon."""
+    groups = OrderedDict()
+    for item in items:
+        cat = (item.category or DEFAULT_CATEGORY).strip() or DEFAULT_CATEGORY
+        groups.setdefault(cat, []).append(item)
+    result = []
+    for cat, cat_items in groups.items():
+        cat_icon = CATEGORY_ICONS.get(cat.lower()) or (cat_items[0].icon if cat_items[0].icon else default_icon)
+        result.append((cat, cat_icon, cat_items))
+    return result
+
+
+# ── Content-management API: Category picker ─────────────────────────────
+@app.route('/api/content/categories', methods=['GET'])
+def api_list_categories():
+    """Every category currently in use across Services and Equipment, so
+    the staff/admin form can offer real, already-typed values instead of a
+    fixed hardcoded list — keeping a service's category (e.g. "Boxing")
+    spelled exactly the same as the equipment tagged under it, which is
+    what makes them group together correctly on the member dashboard."""
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    used = set()
+    for row in GymService.query.with_entities(GymService.category).distinct():
+        if row[0] and row[0].strip():
+            used.add(row[0].strip())
+    for row in GymEquipment.query.with_entities(GymEquipment.category).distinct():
+        if row[0] and row[0].strip():
+            used.add(row[0].strip())
+    return jsonify(success=True, categories=sorted(used, key=str.lower))
 
 
 # ── Content-management API: Membership Plans ────────────────────────────
@@ -608,6 +690,8 @@ def api_save_service():
     item_id      = request.form.get('id', '').strip()
     name         = (request.form.get('name') or '').strip()
     description  = (request.form.get('description') or '').strip()
+    category     = (request.form.get('category') or '').strip()[:60]
+    icon         = (request.form.get('icon') or '').strip()[:8]
     sort_order   = request.form.get('sort_order', '0').strip()
     is_active    = request.form.get('is_active', 'true').strip().lower() != 'false'
     remove_image = request.form.get('remove_image', 'false').strip().lower() == 'true'
@@ -642,6 +726,8 @@ def api_save_service():
     item.name        = name
     item.description = description or None
     item.image_path  = image_path
+    item.category    = category or None
+    item.icon        = icon or None
     item.sort_order  = sort_order
     item.is_active   = is_active
 
@@ -681,6 +767,8 @@ def api_save_equipment():
     item_id      = request.form.get('id', '').strip()
     name         = (request.form.get('name') or '').strip()
     description  = (request.form.get('description') or '').strip()
+    category     = (request.form.get('category') or '').strip()[:60]
+    icon         = (request.form.get('icon') or '').strip()[:8]
     sort_order   = request.form.get('sort_order', '0').strip()
     is_active    = request.form.get('is_active', 'true').strip().lower() != 'false'
     remove_image = request.form.get('remove_image', 'false').strip().lower() == 'true'
@@ -715,6 +803,8 @@ def api_save_equipment():
     item.name        = name
     item.description = description or None
     item.image_path  = image_path
+    item.category    = category or None
+    item.icon        = icon or None
     item.sort_order  = sort_order
     item.is_active   = is_active
 
@@ -1533,10 +1623,14 @@ def member_submit_payment():
 
     payment_amount = _plan_amount(plan, is_student)
 
-    valid_coaches = {'Ronel Samar', 'Jonathan Natividad'}
-    if wants_coach and coach_name not in valid_coaches:
-        return jsonify(success=False, error='Please select a coach.'), 400
-    if not wants_coach:
+    if wants_coach:
+        coach = Coach.query.filter_by(name=coach_name, is_active=True).first()
+        if coach is None:
+            return jsonify(success=False, error='Please select a coach.'), 400
+        occupancy = _get_coach_occupancy().get(coach.name, 0)
+        if occupancy >= coach.max_members:
+            return jsonify(success=False, error=f'{coach.name} is currently at full capacity. Please choose another coach.'), 409
+    else:
         coach_name = None
 
     # ── Student ID proof (required only if the member says they're a student) ──
@@ -1817,6 +1911,45 @@ def staff_record_payment():
             'expiry': membership.expiry_date.strftime('%b %d, %Y'),
         }
     )
+
+
+VALID_COACH_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+
+@app.route('/staff/coach/update', methods=['POST'])
+def staff_update_coach():
+    """Staff edits a coach's available days and member capacity so members
+    see accurate availability when requesting that coach."""
+    if session.get('role') not in ('staff', 'admin'):
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    coach_id = request.form.get('coach_id', type=int)
+    coach = Coach.query.get(coach_id) if coach_id else None
+    if coach is None:
+        return jsonify(success=False, error='Coach not found.'), 404
+
+    days = request.form.getlist('available_days')
+    days = [d for d in days if d in VALID_COACH_DAYS]
+    # Keep Mon..Sun order regardless of checkbox submission order
+    days = [d for d in VALID_COACH_DAYS if d in days]
+
+    max_members = request.form.get('max_members', type=int)
+    if max_members is None or max_members < 1:
+        return jsonify(success=False, error='Capacity must be at least 1 member.'), 400
+
+    current_occupancy = _get_coach_occupancy().get(coach.name, 0)
+    if max_members < current_occupancy:
+        return jsonify(
+            success=False,
+            error=f'{coach.name} currently has {current_occupancy} active member(s) — '
+                  f'capacity cannot be set below that.'
+        ), 400
+
+    coach.available_days = ','.join(days)
+    coach.max_members = max_members
+    db.session.commit()
+
+    return jsonify(success=True, message=f"{coach.name}'s availability updated.")
 
 
 @app.route('/staff/checkin', methods=['POST'])
@@ -2211,6 +2344,19 @@ def member():
     content_services  = GymService.query.filter_by(is_active=True).order_by(GymService.sort_order, GymService.id).all()
     content_equipment = GymEquipment.query.filter_by(is_active=True).order_by(GymEquipment.sort_order, GymEquipment.id).all()
 
+    # Equipment grouped by category for the "Gym Machines and Equipment"
+    # display — each group is (category_name, category_icon, [items]),
+    # preserving sort_order within the category and category first-seen
+    # order overall. Services are shown as a flat grid (each service acts
+    # as its own "category" card, e.g. "Boxing" / "Strengthening"), so no
+    # grouping is needed for them.
+    equipment_by_category = _group_content_by_category(content_equipment, default_icon=DEFAULT_EQUIPMENT_ICON)
+
+    # ── Coaches (for the "Choose a Coach" field on the plan request form) —
+    #    shows each coach's available days and remaining slots so members
+    #    can pick one that's actually open. ──
+    coaches_data = [c for c in _get_coaches_data() if c['is_active']]
+
     plans_data = [{
         'key':            p.name.lower(),
         'name':           p.name,
@@ -2226,6 +2372,8 @@ def member():
         'name':        s.name,
         'description': s.description or '',
         'image_path':  url_for('static', filename=s.image_path) if s.image_path else '',
+        'category':    s.category or DEFAULT_CATEGORY,
+        'icon':        s.icon or DEFAULT_SERVICE_ICON,
     } for s in content_services]
 
     return render_template(
@@ -2237,8 +2385,10 @@ def member():
         content_plans=content_plans,
         content_services=content_services,
         content_equipment=content_equipment,
+        equipment_by_category=equipment_by_category,
         plans_data=plans_data,
         services_data=services_data,
+        coaches=coaches_data,
         present_days=present_days,
         no_plan_days=no_plan_days,
         days_in_month=days_in_month,
@@ -2474,6 +2624,8 @@ def staff():
         'date': p.paid_at.strftime('%b %d, %Y'),
     } for p in coach_rows]
 
+    coaches_data = _get_coaches_data()
+
     stats = {
         'checkins_today':   len(attendance_today),
         'active_members':   len(active_members),
@@ -2514,6 +2666,8 @@ def staff():
         pending_requests=pending_requests,
         processed_requests=processed_requests,
         coach_assignments=coach_assignments,
+        coaches=coaches_data,
+        coach_days=VALID_COACH_DAYS,
         payment_members=payment_members,
         analytics=analytics,
         report_ranges=REPORT_RANGES,
@@ -2729,6 +2883,43 @@ def staff_report_attendance_csv():
     )
 
 
+def _get_coach_occupancy():
+    """Return {coach_name: count} of members currently occupying a slot with
+    that coach — i.e. members with an active membership whose most recent
+    verified payment requested that coach. Renewals without a coach, or
+    expired/declined memberships, don't count."""
+    active_member_ids = {
+        m.member_id for m in Membership.query.filter_by(status='active').all()
+    }
+    latest_verified_payment = {}
+    for p in (Payment.query.filter(Payment.status == 'verified')
+              .order_by(Payment.paid_at.asc()).all()):
+        latest_verified_payment[p.member_id] = p  # last one wins -> most recent
+
+    occupancy = {}
+    for member_id, p in latest_verified_payment.items():
+        if member_id in active_member_ids and p.wants_coach and p.coach_name:
+            occupancy[p.coach_name] = occupancy.get(p.coach_name, 0) + 1
+    return occupancy
+
+
+def _get_coaches_data():
+    """Coaches with computed occupancy/slots-left, for both the staff Coach
+    tab (management) and the member plan-request form (availability)."""
+    occupancy = _get_coach_occupancy()
+    coaches = Coach.query.order_by(Coach.name).all()
+    return [{
+        'id':             c.id,
+        'name':           c.name,
+        'available_days': c.available_days_list,
+        'max_members':    c.max_members,
+        'is_active':      c.is_active,
+        'current_members': occupancy.get(c.name, 0),
+        'slots_left':     max(c.max_members - occupancy.get(c.name, 0), 0),
+        'is_full':        occupancy.get(c.name, 0) >= c.max_members,
+    } for c in coaches]
+
+
 def _get_members_with_plans():
     """Return every member with their current plan/expiry/status, newest first."""
     rows = (
@@ -2923,16 +3114,34 @@ def seed_default_plans():
     db.session.commit()
 
 
+def seed_default_coaches():
+    defaults = [
+        {'name': 'Ronel Samar',        'available_days': 'Mon,Wed,Fri', 'max_members': 10},
+        {'name': 'Jonathan Natividad', 'available_days': 'Tue,Thu,Sat', 'max_members': 10},
+    ]
+    for c in defaults:
+        if Coach.query.filter_by(name=c['name']).first() is None:
+            db.session.add(Coach(
+                name=c['name'],
+                available_days=c['available_days'],
+                max_members=c['max_members'],
+            ))
+    db.session.commit()
+
+
 def seed_default_equipment():
     defaults = [
-        {'name': 'Weight Area',          'image_path': 'images/facility-weight.png',      'sort_order': 1},
-        {'name': 'Cardio Area',          'image_path': 'images/facility-cardio.png',      'sort_order': 2},
-        {'name': 'Functional Training',  'image_path': 'images/facility-functional.png',  'sort_order': 3},
-        {'name': 'Reception',            'image_path': 'images/facility-reception.png',   'sort_order': 4},
+        {'name': 'Weight Area',          'image_path': 'images/facility-weight.png',      'sort_order': 1, 'category': 'Strengthening', 'icon': '💪'},
+        {'name': 'Cardio Area',          'image_path': 'images/facility-cardio.png',      'sort_order': 2, 'category': 'Cardio Zone',    'icon': '🏃'},
+        {'name': 'Functional Training',  'image_path': 'images/facility-functional.png',  'sort_order': 3, 'category': 'Functional Training', 'icon': '🤸'},
+        {'name': 'Reception',            'image_path': 'images/facility-reception.png',   'sort_order': 4, 'category': 'General',        'icon': '🛎️'},
     ]
     if GymEquipment.query.count() == 0:
         for e in defaults:
-            db.session.add(GymEquipment(name=e['name'], image_path=e['image_path'], sort_order=e['sort_order']))
+            db.session.add(GymEquipment(
+                name=e['name'], image_path=e['image_path'], sort_order=e['sort_order'],
+                category=e['category'], icon=e['icon'],
+            ))
         db.session.commit()
 
 
@@ -2949,6 +3158,10 @@ def _run_startup_migrations():
         ('membership_plans', 'image_path',  "ALTER TABLE membership_plans ADD COLUMN image_path VARCHAR(255) NULL"),
         ('membership_plans', 'inclusions',  "ALTER TABLE membership_plans ADD COLUMN inclusions TEXT NULL"),
         ('membership_plans', 'sort_order',  "ALTER TABLE membership_plans ADD COLUMN sort_order INT NOT NULL DEFAULT 0"),
+        ('gym_services',   'category', "ALTER TABLE gym_services ADD COLUMN category VARCHAR(60) NULL"),
+        ('gym_services',   'icon',     "ALTER TABLE gym_services ADD COLUMN icon VARCHAR(8) NULL"),
+        ('gym_equipment',  'category', "ALTER TABLE gym_equipment ADD COLUMN category VARCHAR(60) NULL"),
+        ('gym_equipment',  'icon',     "ALTER TABLE gym_equipment ADD COLUMN icon VARCHAR(8) NULL"),
     ]
     with db.engine.connect() as conn:
         for table, column, ddl in migrations:
@@ -2964,6 +3177,7 @@ if __name__ == '__main__':
         db.create_all()
         _run_startup_migrations()
         seed_default_plans()
+        seed_default_coaches()
         seed_default_equipment()
         seed_default_users()
         print("Tables created, plans and demo users seeded!")
