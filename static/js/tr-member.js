@@ -682,9 +682,10 @@ const MemberModule = (() => {
   // ── Services tab: "what's included" modal ──
   // Sourced from SERVICE_DATA (built from #member-services-data), which
   // mirrors whatever admin/staff have set under Settings → Manage Content.
-  // Services only carry a name + description (no per-line inclusions list
-  // in the data model), so the "What's included" bullet list is hidden
-  // when there's nothing to show.
+  // The eye icon on each service card opens this same modal; it now also
+  // lists the equipment/machines admin/staff linked to that service (via
+  // the "Equipment / Machines used for this service" checklist on the
+  // content form), so members know what to use before they show up.
   function openServiceModal(id) {
     const info = SERVICE_DATA[id];
     if (!info) return;
@@ -694,12 +695,19 @@ const MemberModule = (() => {
     const subtitle  = document.getElementById('service-modal-subtitle');
     const listTitle = document.getElementById('service-modal-list-title');
     const list      = document.getElementById('service-modal-list');
+    const equipment = info.equipment || [];
 
     if (icon)     icon.textContent = info.icon || '🛎️';
     if (title)    title.textContent = info.name.toUpperCase();
     if (subtitle) subtitle.textContent = info.description || '';
-    if (list)     list.innerHTML = '';
-    if (listTitle) listTitle.style.display = 'none';
+
+    if (equipment.length) {
+      if (listTitle) { listTitle.textContent = 'Equipment used for this service'; listTitle.style.display = ''; }
+      if (list)       list.innerHTML = equipment.map(e => `<li>${e.icon || '🏋️'} ${_escapeHtml(e.name)}</li>`).join('');
+    } else {
+      if (list)      list.innerHTML = '';
+      if (listTitle) listTitle.style.display = 'none';
+    }
 
     openModal('service-modal');
   }

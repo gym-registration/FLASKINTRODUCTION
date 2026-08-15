@@ -511,28 +511,28 @@
     <div id="member-services" class="sub-panel">
       <div class="page-header"><div><div class="page-title">GYM SERVICES</div></div></div>
 
-      {% for category, category_icon, items in services_by_category %}
-      <div class="equip-category">
-        <div class="equip-category-title"><span class="equip-category-icon">{{ category_icon }}</span> {{ category }}</div>
-        <div class="grid-4">
-          {% for s in items %}
-          <div class="panel service-card" onclick="openServiceModal({{ s.id }})">
-            <div class="panel-body" style="text-align:center;">
-              {% if s.image_path %}
-              <div style="width:56px;height:56px;margin:0 auto 10px;border-radius:8px;background-size:cover;background-position:center;background-image:url('{{ url_for('static', filename=s.image_path) }}');"></div>
-              {% else %}
-              <div style="font-size:36px;margin-bottom:10px;">{{ s.icon or '🛎️' }}</div>
-              {% endif %}
-              <div class="panel-title">{{ s.name }}</div>
-              {% if s.description %}<div style="font-size:12px;color:var(--muted);margin-top:6px;">{{ s.description }}</div>{% endif %}
-            </div>
+      <div class="grid-4">
+        {% for s in content_services %}
+        <div class="panel service-card" style="position:relative;">
+          <button type="button" class="service-eye-btn" title="See equipment used for this service"
+                  onclick="event.stopPropagation(); openServiceModal({{ s.id }});"
+                  style="position:absolute;bottom:8px;right:8px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.35);color:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;">
+            👁️
+          </button>
+          <div class="panel-body" style="text-align:center;" onclick="openServiceModal({{ s.id }})">
+            {% if s.image_path %}
+            <div style="width:56px;height:56px;margin:0 auto 10px;border-radius:8px;background-size:cover;background-position:center;background-image:url('{{ url_for('static', filename=s.image_path) }}');"></div>
+            {% else %}
+            <div style="font-size:36px;margin-bottom:10px;">{{ s.icon or '🛎️' }}</div>
+            {% endif %}
+            <div class="panel-title">{{ s.name }}</div>
+            {% if s.description %}<div style="font-size:12px;color:var(--muted);margin-top:6px;">{{ s.description }}</div>{% endif %}
           </div>
-          {% endfor %}
         </div>
+        {% else %}
+        <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:20px;">No services listed yet.</div>
+        {% endfor %}
       </div>
-      {% else %}
-      <div style="text-align:center;color:var(--muted);padding:20px;">No services listed yet.</div>
-      {% endfor %}
       <script id="member-services-data" type="application/json">{{ services_data|tojson }}</script>
 
       <div class="panel" style="margin-top:20px;">

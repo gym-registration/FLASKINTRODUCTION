@@ -875,6 +875,8 @@ select.form-input option:focus {
   padding: 36px;
   width: 100%;
   max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
   position: relative;
 }
 .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; transition: color 0.2s; }
@@ -1071,7 +1073,7 @@ select.form-input option:focus {
 .equip-category-title .equip-category-icon { font-size: 16px; }
 
 /* Square service cards (Services tab) */
-.service-card { aspect-ratio: 1 / 1; display: flex; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.service-card { position: relative; aspect-ratio: 1 / 1; display: flex; cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
 .service-card:hover { border-color: var(--red); transform: translateY(-2px); }
 .service-card .panel-body {
   display: flex;
@@ -1079,6 +1081,32 @@ select.form-input option:focus {
   align-items: center;
   justify-content: center;
   width: 100%;
+}
+
+/* "View equipment" eye icon on each service card */
+.service-eye-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.service-eye-btn svg { width: 16px; height: 16px; }
+.service-eye-btn:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--white);
+  transform: scale(1.08);
 }
 
 /* Search */

@@ -612,6 +612,11 @@
       <textarea class="form-input" id="cf-inclusions" rows="4" style="resize:vertical;" placeholder="Gym Equipment Access&#10;Locker Access&#10;Free Towel Service"></textarea>
     </div>
 
+    <div class="form-group" id="cf-equipment-wrap" style="display:none;">
+      <label class="form-label">Equipment / Machines used for this service</label>
+      <div id="cf-equipment-list" style="display:flex;flex-wrap:wrap;gap:8px;max-height:160px;overflow:auto;padding:8px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;"></div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">Display Order</label>
       <input class="form-input" type="number" id="cf-sort-order" value="0" style="max-width:140px;">
@@ -621,7 +626,14 @@
       <input type="checkbox" id="cf-active" checked> Active / visible to members and on the home page
     </label>
 
-    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="ContentManager.submit()">SAVE</button>
+    <label class="content-checkbox-row" id="cf-is-facility-wrap" style="display:none;">
+      <input type="checkbox" id="cf-is-facility"> This is a facility/area photo (e.g. "Weight Area", "Reception") — show only on the home page's Our Facilities section, not as a machine on the member dashboard or the Services equipment picker
+    </label>
+
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="btn btn-outline" style="flex:1;justify-content:center;" onclick="closeModal('content-form-modal')">CANCEL</button>
+      <button class="btn btn-red" style="flex:1;justify-content:center;" onclick="ContentManager.submit()">SAVE</button>
+    </div>
   </div>
 </div>
 

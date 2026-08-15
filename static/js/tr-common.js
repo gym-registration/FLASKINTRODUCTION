@@ -576,12 +576,16 @@ const ContentManager = (() => {
     const statusBadge = item.is_active
       ? '<span class="badge badge-green">ACTIVE</span>'
       : '<span class="badge badge-muted">HIDDEN</span>';
+    const facilityBadge = (type === 'equipment' && item.is_facility)
+      ? '<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-top:2px;">🏢 Facility photo — not shown as equipment</div>'
+      : '';
     return `
       <div class="content-card" data-id="${item.id}">
         <div class="content-card-img" style="${img}">${img ? '' : icon}${statusBadge}</div>
         <div class="content-card-body">
           <div class="content-card-name">${_esc(item.name)}</div>
           ${categoryBadge}
+          ${facilityBadge}
           ${priceLine}
           ${item.description ? `<div class="content-card-desc">${_esc(item.description)}</div>` : ''}
           ${inclusionsHtml}
@@ -622,6 +626,20 @@ const ContentManager = (() => {
     if (catInput)  catInput.value  = item ? (item.category || '') : '';
     if (iconInput) iconInput.value = item ? (item.icon || '') : '';
     _refreshIconPickList(type);
+
+    // Equipment/machines checklist — services only ("what to use for this
+    // service", shown to members via the eye icon on their service card).
+    const isService = type === 'services';
+    const eqWrap = document.getElementById('cf-equipment-wrap');
+    if (eqWrap) eqWrap.style.display = isService ? 'block' : 'none';
+    if (isService) _renderEquipmentChecklist(item ? (item.equipment_ids || []) : []);
+
+    // "Facility photo, not a real machine" flag — equipment items only.
+    const isEquipment = type === 'equipment';
+    const facilityWrap = document.getElementById('cf-is-facility-wrap');
+    if (facilityWrap) facilityWrap.style.display = isEquipment ? 'flex' : 'none';
+    const facilityCheck = document.getElementById('cf-is-facility');
+    if (facilityCheck) facilityCheck.checked = item ? !!item.is_facility : false;
 
     const preview = document.getElementById('cf-image-preview');
     const removeWrap = document.getElementById('cf-remove-image-wrap');
@@ -698,6 +716,40 @@ const ContentManager = (() => {
     if (iconInput) iconInput.value = emoji;
   }
 
+  // ── Equipment checklist (Services form only) ──
+  function _renderEquipmentChecklist(checkedIds) {
+    const list = document.getElementById('cf-equipment-list');
+    if (!list) return;
+    const checked = new Set((checkedIds || []).map(String));
+    const render = (allItems) => {
+      // Facility-zone photos (Weight Area, Reception, etc.) aren't real
+      // machines, so they don't belong in a service's equipment list.
+      const items = allItems.filter(eq => !eq.is_facility);
+      if (!items.length) {
+        list.innerHTML = '<div style="font-size:12px;color:var(--muted);">No equipment set up yet — add some under the Equipment tab first.</div>';
+        return;
+      }
+      list.innerHTML = items.map(eq => `
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--white);cursor:pointer;background:rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px;">
+          <input type="checkbox" class="cf-equipment-check" value="${eq.id}" ${checked.has(String(eq.id)) ? 'checked' : ''}>
+          <span>${eq.icon || '🏋️'} ${_esc(eq.name)}</span>
+        </label>`).join('');
+    };
+    if (cache.equipment !== null) {
+      render(cache.equipment);
+    } else {
+      list.innerHTML = '<div style="font-size:12px;color:var(--muted);">Loading equipment…</div>';
+      fetch(ENDPOINTS.equipment.list)
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success) { list.innerHTML = '<div style="font-size:12px;color:var(--muted);">Could not load equipment.</div>'; return; }
+          cache.equipment = data.items;
+          render(data.items);
+        })
+        .catch(() => { list.innerHTML = '<div style="font-size:12px;color:var(--muted);">Could not reach the server.</div>'; });
+    }
+  }
+
   function submit() {
     const type = document.getElementById('cf-type').value;
     const id = document.getElementById('cf-id').value;
@@ -719,6 +771,14 @@ const ContentManager = (() => {
       const iconInput = document.getElementById('cf-icon');
       fd.append('category', catInput ? catInput.value.trim() : '');
       fd.append('icon', iconInput ? iconInput.value.trim() : '');
+    }
+
+    if (type === 'services') {
+      document.querySelectorAll('.cf-equipment-check:checked').forEach(cb => fd.append('equipment_ids', cb.value));
+    }
+    if (type === 'equipment') {
+      const facilityCheck = document.getElementById('cf-is-facility');
+      fd.append('is_facility', (facilityCheck && facilityCheck.checked) ? 'true' : 'false');
     }
 
     if (type === 'plans') {

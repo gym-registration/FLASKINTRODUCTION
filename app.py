@@ -424,6 +424,17 @@ class Announcement(db.Model):
     posted_by = db.relationship('User', foreign_keys=[posted_by_id])
 
 
+# Many-to-many join table linking a Service to the Equipment/Machines used
+# for it, so the member dashboard can show "Equipment Used" per service.
+# A brand-new table like this is created automatically by db.create_all()
+# on next startup — no ALTER TABLE / manual migration needed.
+service_equipment = db.Table(
+    'service_equipment',
+    db.Column('service_id',   db.Integer, db.ForeignKey('gym_services.id',  ondelete='CASCADE'), primary_key=True),
+    db.Column('equipment_id', db.Integer, db.ForeignKey('gym_equipment.id', ondelete='CASCADE'), primary_key=True),
+)
+
+
 class GymService(db.Model):
     """A service offered at the gym (e.g. 'Personal Coaching', 'Locker
     Rental') — editable by staff/admin and shown on the public home page."""
@@ -439,6 +450,8 @@ class GymService(db.Model):
     created_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                              onupdate=lambda: datetime.now(timezone.utc))
+    equipment    = db.relationship('GymEquipment', secondary=service_equipment,
+                                    order_by='GymEquipment.sort_order, GymEquipment.id')
 
     def __repr__(self):
         return f"<GymService {self.name}>"
@@ -456,6 +469,12 @@ class GymEquipment(db.Model):
     icon         = db.Column(db.String(8), nullable=True)    # single emoji shown on chips/cards
     is_active    = db.Column(db.Boolean, nullable=False, default=True)
     sort_order   = db.Column(db.Integer, nullable=False, default=0)
+    # True for the broad facility-zone photos (Weight Area, Cardio Area,
+    # Reception, etc.) used on the home page's "Our Facilities" section —
+    # they're not real individual machines, so they're hidden from the
+    # member dashboard's "Gym Machines and Equipment" list and from the
+    # equipment picker on the Services form.
+    is_facility  = db.Column(db.Boolean, nullable=False, default=False)
     created_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at   = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                              onupdate=lambda: datetime.now(timezone.utc))
@@ -521,6 +540,9 @@ def _service_to_dict(s):
         'category': s.category or DEFAULT_CATEGORY,
         'icon': s.icon or DEFAULT_SERVICE_ICON,
         'sort_order': s.sort_order,
+        # Ids only here (admin form pre-checks these boxes); the member
+        # dashboard gets fuller name/icon objects via services_data below.
+        'equipment_ids': [e.id for e in s.equipment],
     }
 
 
@@ -531,6 +553,7 @@ def _equipment_to_dict(e):
         'category': e.category or DEFAULT_CATEGORY,
         'icon': e.icon or DEFAULT_EQUIPMENT_ICON,
         'sort_order': e.sort_order,
+        'is_facility': e.is_facility,
     }
 
 
@@ -731,6 +754,15 @@ def api_save_service():
     item.sort_order  = sort_order
     item.is_active   = is_active
 
+    # Equipment/machines checked in the form (sent as repeated
+    # "equipment_ids" fields). Replacing the whole list on every save keeps
+    # this in sync even when boxes are unchecked.
+    equipment_ids = [i for i in request.form.getlist('equipment_ids') if i.strip()]
+    if equipment_ids:
+        item.equipment = GymEquipment.query.filter(GymEquipment.id.in_(equipment_ids)).all()
+    else:
+        item.equipment = []
+
     if not item_id:
         db.session.add(item)
     db.session.commit()
@@ -771,6 +803,7 @@ def api_save_equipment():
     icon         = (request.form.get('icon') or '').strip()[:8]
     sort_order   = request.form.get('sort_order', '0').strip()
     is_active    = request.form.get('is_active', 'true').strip().lower() != 'false'
+    is_facility  = request.form.get('is_facility', 'false').strip().lower() == 'true'
     remove_image = request.form.get('remove_image', 'false').strip().lower() == 'true'
 
     if not name:
@@ -807,6 +840,7 @@ def api_save_equipment():
     item.icon        = icon or None
     item.sort_order  = sort_order
     item.is_active   = is_active
+    item.is_facility = is_facility
 
     if not item_id:
         db.session.add(item)
@@ -2349,8 +2383,13 @@ def member():
     # preserving sort_order within the category and category first-seen
     # order overall. Services are shown as a flat grid (each service acts
     # as its own "category" card, e.g. "Boxing" / "Strengthening"), so no
-    # grouping is needed for them.
-    equipment_by_category = _group_content_by_category(content_equipment, default_icon=DEFAULT_EQUIPMENT_ICON)
+    # grouping is needed for them. Facility-zone photos (is_facility=True,
+    # e.g. "Weight Area", "Reception") are shown on the home page's "Our
+    # Facilities" section but are not real individual machines, so they're
+    # left out of this member-facing equipment list.
+    real_equipment = [e for e in content_equipment if not e.is_facility]
+    equipment_by_category = _group_content_by_category(real_equipment, default_icon=DEFAULT_EQUIPMENT_ICON)
+    services_by_category  = _group_content_by_category(content_services, default_icon=DEFAULT_SERVICE_ICON)
 
     # ── Coaches (for the "Choose a Coach" field on the plan request form) —
     #    shows each coach's available days and remaining slots so members
@@ -2374,6 +2413,7 @@ def member():
         'image_path':  url_for('static', filename=s.image_path) if s.image_path else '',
         'category':    s.category or DEFAULT_CATEGORY,
         'icon':        s.icon or DEFAULT_SERVICE_ICON,
+        'equipment':   [{'name': e.name, 'icon': e.icon or DEFAULT_EQUIPMENT_ICON} for e in s.equipment],
     } for s in content_services]
 
     return render_template(
@@ -2386,6 +2426,7 @@ def member():
         content_services=content_services,
         content_equipment=content_equipment,
         equipment_by_category=equipment_by_category,
+        services_by_category=services_by_category,
         plans_data=plans_data,
         services_data=services_data,
         coaches=coaches_data,
@@ -3141,6 +3182,7 @@ def seed_default_equipment():
             db.session.add(GymEquipment(
                 name=e['name'], image_path=e['image_path'], sort_order=e['sort_order'],
                 category=e['category'], icon=e['icon'],
+                is_facility=True,  # facility-zone photo, not a real machine — see model docstring
             ))
         db.session.commit()
 
@@ -3162,6 +3204,7 @@ def _run_startup_migrations():
         ('gym_services',   'icon',     "ALTER TABLE gym_services ADD COLUMN icon VARCHAR(8) NULL"),
         ('gym_equipment',  'category', "ALTER TABLE gym_equipment ADD COLUMN category VARCHAR(60) NULL"),
         ('gym_equipment',  'icon',     "ALTER TABLE gym_equipment ADD COLUMN icon VARCHAR(8) NULL"),
+        ('gym_equipment',  'is_facility', "ALTER TABLE gym_equipment ADD COLUMN is_facility TINYINT(1) NOT NULL DEFAULT 0"),
     ]
     with db.engine.connect() as conn:
         for table, column, ddl in migrations:
