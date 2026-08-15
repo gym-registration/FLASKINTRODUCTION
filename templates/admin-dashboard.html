@@ -517,8 +517,8 @@
           <div class="content-subtabs">
             <button class="content-subtab active" data-content-type="plans" onclick="ContentManager.showType('plans')">Membership Plans</button>
             <button class="content-subtab" data-content-type="services" onclick="ContentManager.showType('services')">Services</button>
-            <button class="content-subtab" data-content-type="our facilities" onclick="ContentManager.showType('our facilities')">Our Facilities</button>
-            <button class="content-subtab" data-content-type="Equipments and Machines" onclick="ContentManager.showType('Equipments and Machines')">Equipments and Machines</button>
+            <button class="content-subtab" data-content-type="facilities" onclick="ContentManager.showType('facilities')">Our Facilities</button>
+            <button class="content-subtab" data-content-type="machines" onclick="ContentManager.showType('machines')">Equipments and Machines</button>
             
           </div>
 
@@ -529,8 +529,8 @@
 
           <div class="content-grid" id="content-grid-plans"></div>
           <div class="content-grid" id="content-grid-services" style="display:none;"></div>
-          <div class="content-grid" id="content-grid-our facilities" style="display:none;"></div>
-          <div class="content-grid" id="content-grid-Equipments and Machines" style="display:none;"></div>
+          <div class="content-grid" id="content-grid-facilities" style="display:none;"></div>
+          <div class="content-grid" id="content-grid-machines" style="display:none;"></div>
         </div>
       </div>
     </div><!-- /admin-settings -->
@@ -577,8 +577,12 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">Name</label>
+      <label class="form-label" id="cf-name-label">Name</label>
+      <select class="form-input" id="cf-name-select" style="display:none;" onchange="ContentManager.onNameSelectChange()"></select>
       <input class="form-input" id="cf-name" placeholder="e.g. Monthly Membership">
+      <div id="cf-name-toggle" style="display:none;margin-top:6px;">
+        <span class="link-btn" style="font-size:12px;" onclick="ContentManager.backToNameList()">← Choose from list instead</span>
+      </div>
     </div>
 
     <div class="form-row" id="cf-plan-fields" style="display:none;">
@@ -627,10 +631,6 @@
 
     <label class="content-checkbox-row">
       <input type="checkbox" id="cf-active" checked> Active / visible to members and on the home page
-    </label>
-
-    <label class="content-checkbox-row" id="cf-is-facility-wrap" style="display:none;">
-      <input type="checkbox" id="cf-is-facility"> This is a facility/area photo (e.g. "Weight Area", "Reception") — show only on the home page's Our Facilities section, not as a machine on the member dashboard or the Services equipment picker
     </label>
 
     <div style="display:flex;gap:10px;margin-top:4px;">

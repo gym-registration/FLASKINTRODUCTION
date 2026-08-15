@@ -488,15 +488,29 @@ function _val(id) {
 ════════════════════════════════════════════════ */
 const ContentManager = (() => {
 
-  const TYPES = ['plans', 'services', 'equipment'];
+  // "facilities" (home page Our Facilities photos) and "machines"
+  // (Equipments and Machines) are two admin-facing views over the SAME
+  // GymEquipment table/endpoint, split client-side by the is_facility flag —
+  // this lets the dashboard offer two focused tabs without a second backend
+  // model. TYPES lists every tab the UI can show; ENDPOINTS/LABELS below
+  // map each one to the request it should make and its display name.
+  const TYPES = ['plans', 'services', 'facilities', 'machines'];
   const ENDPOINTS = {
     plans:     { list: '/api/content/plans',     save: '/api/content/plans/save',     del: id => `/api/content/plans/${id}/delete` },
     services:  { list: '/api/content/services',  save: '/api/content/services/save',  del: id => `/api/content/services/${id}/delete` },
     equipment: { list: '/api/content/equipment', save: '/api/content/equipment/save', del: id => `/api/content/equipment/${id}/delete` },
   };
-  const LABELS = { plans: 'Membership Plan', services: 'Service', equipment: 'Equipment' };
+  ENDPOINTS.facilities = ENDPOINTS.equipment;
+  ENDPOINTS.machines   = ENDPOINTS.equipment;
+  const LABELS = { plans: 'Membership Plan', services: 'Service', facilities: 'Facility Photo', machines: 'Equipment' };
+  // Which value of is_facility each tab represents, and therefore which
+  // value gets saved automatically when adding/editing from that tab.
+  const IS_FACILITY_TYPE = { facilities: true, machines: false };
 
   let currentType = 'plans';
+  // cache.equipment holds the single raw list backing both the
+  // "facilities" and "machines" tabs (and the Services equipment checklist);
+  // it's filtered client-side per tab in _filterEquipment().
   let cache = { plans: null, services: null, equipment: null };
   let pendingDelete = null; // { type, id }
   let loaded = false;
@@ -516,11 +530,18 @@ const ContentManager = (() => {
       const grid = document.getElementById('content-grid-' + t);
       if (grid) grid.style.display = (t === type) ? 'grid' : 'none';
     });
-    if (cache[type] === null) {
+    if (type === 'facilities' || type === 'machines') {
+      if (cache.equipment === null) _fetchEquipment();
+      else _renderGrid(type, _filterEquipment(type));
+    } else if (cache[type] === null) {
       _fetchType(type);
     } else {
       _renderGrid(type, cache[type]);
     }
+  }
+
+  function _filterEquipment(type) {
+    return (cache.equipment || []).filter(it => !!it.is_facility === IS_FACILITY_TYPE[type]);
   }
 
   function _fetchType(type) {
@@ -536,9 +557,29 @@ const ContentManager = (() => {
       .catch(() => showToast('Could not reach the server.', 'error'));
   }
 
+  function _fetchEquipment() {
+    const grid = document.getElementById('content-grid-' + currentType);
+    if (grid) grid.innerHTML = '<div class="content-empty">Loading…</div>';
+    fetch(ENDPOINTS.equipment.list)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) { showToast(data.error || 'Could not load content.', 'error'); return; }
+        cache.equipment = data.items;
+        if (currentType === 'facilities' || currentType === 'machines') {
+          _renderGrid(currentType, _filterEquipment(currentType));
+        }
+      })
+      .catch(() => showToast('Could not reach the server.', 'error'));
+  }
+
   function refresh(type) {
-    cache[type] = null;
-    if (currentType === type) _fetchType(type);
+    if (type === 'facilities' || type === 'machines') {
+      cache.equipment = null;
+      if (currentType === 'facilities' || currentType === 'machines') _fetchEquipment();
+    } else {
+      cache[type] = null;
+      if (currentType === type) _fetchType(type);
+    }
   }
 
   function _renderGrid(type, items) {
@@ -560,7 +601,7 @@ const ContentManager = (() => {
     const img = item.image_path
       ? `background-image:url('/static/${item.image_path}')`
       : '';
-    const fallbackIcon = isPlan ? '💳' : (type === 'services' ? '🛎️' : '🏋️');
+    const fallbackIcon = isPlan ? '💳' : type === 'services' ? '🛎️' : type === 'facilities' ? '🏢' : '🏋️';
     const icon = item.image_path ? '' : (item.icon || fallbackIcon);
     const priceLine = isPlan
       ? `<div class="content-card-price">₱${Number(item.price).toLocaleString()} / ${item.duration_days} day${item.duration_days == 1 ? '' : 's'}</div>`
@@ -576,16 +617,12 @@ const ContentManager = (() => {
     const statusBadge = item.is_active
       ? '<span class="badge badge-green">ACTIVE</span>'
       : '<span class="badge badge-muted">HIDDEN</span>';
-    const facilityBadge = (type === 'equipment' && item.is_facility)
-      ? '<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-top:2px;">🏢 Facility photo — not shown as equipment</div>'
-      : '';
     return `
       <div class="content-card" data-id="${item.id}">
         <div class="content-card-img" style="${img}">${img ? '' : icon}${statusBadge}</div>
         <div class="content-card-body">
           <div class="content-card-name">${_esc(item.name)}</div>
           ${categoryBadge}
-          ${facilityBadge}
           ${priceLine}
           ${item.description ? `<div class="content-card-desc">${_esc(item.description)}</div>` : ''}
           ${inclusionsHtml}
@@ -602,12 +639,41 @@ const ContentManager = (() => {
     document.getElementById('cf-type').value = type;
     document.getElementById('cf-id').value = item ? item.id : '';
     document.getElementById('content-form-title').textContent = item ? `EDIT ${LABELS[type].toUpperCase()}` : `ADD ${LABELS[type].toUpperCase()}`;
-    document.getElementById('cf-name').value = item ? item.name : '';
     document.getElementById('cf-description').value = item ? item.description : '';
     document.getElementById('cf-sort-order').value = item ? item.sort_order : 0;
     document.getElementById('cf-active').checked = item ? !!item.is_active : true;
     document.getElementById('cf-image-input').value = '';
     document.getElementById('cf-remove-image').checked = false;
+
+    // Name field. Plans/Services, and editing an existing item of any
+    // type, keep the classic free-text box. Adding a brand-new facility
+    // or machine instead shows a dropdown of already-used + common names
+    // first, so staff can pick a consistent name with no typing — picking
+    // "+ Add New …" swaps back to the free-text box for a name that isn't
+    // listed yet.
+    const nameLabel  = document.getElementById('cf-name-label');
+    const nameSelect = document.getElementById('cf-name-select');
+    const nameInput  = document.getElementById('cf-name');
+    const nameBack   = document.getElementById('cf-name-toggle');
+    if (nameLabel) {
+      nameLabel.textContent = type === 'machines'    ? 'Name of Equipment/Machine'
+                             : type === 'facilities'  ? 'Name of Facility/Area'
+                             : 'Name';
+    }
+    nameInput.value = item ? item.name : '';
+    const useNameDropdown = !item && (type === 'facilities' || type === 'machines');
+    if (nameSelect) {
+      if (useNameDropdown) {
+        nameSelect.style.display = '';
+        nameInput.style.display  = 'none';
+        if (nameBack) nameBack.style.display = 'none';
+        _ensureEquipmentLoaded(() => _populateNameOptions(type));
+      } else {
+        nameSelect.style.display = 'none';
+        nameInput.style.display  = '';
+        if (nameBack) nameBack.style.display = 'none';
+      }
+    }
 
     const isPlan = type === 'plans';
     document.getElementById('cf-plan-fields').style.display = isPlan ? 'grid' : 'none';
@@ -634,12 +700,12 @@ const ContentManager = (() => {
     if (eqWrap) eqWrap.style.display = isService ? 'block' : 'none';
     if (isService) _renderEquipmentChecklist(item ? (item.equipment_ids || []) : []);
 
-    // "Facility photo, not a real machine" flag — equipment items only.
-    const isEquipment = type === 'equipment';
+    // is_facility is no longer a manual checkbox — it's implied by which
+    // tab (Our Facilities vs Equipments and Machines) the form was opened
+    // from, and is set automatically on submit(). Kept here only in case
+    // an older page still has the legacy checkbox markup.
     const facilityWrap = document.getElementById('cf-is-facility-wrap');
-    if (facilityWrap) facilityWrap.style.display = isEquipment ? 'flex' : 'none';
-    const facilityCheck = document.getElementById('cf-is-facility');
-    if (facilityCheck) facilityCheck.checked = item ? !!item.is_facility : false;
+    if (facilityWrap) facilityWrap.style.display = 'none';
 
     const preview = document.getElementById('cf-image-preview');
     const removeWrap = document.getElementById('cf-remove-image-wrap');
@@ -668,14 +734,94 @@ const ContentManager = (() => {
     reader.readAsDataURL(file);
   }
 
+  // ── Name dropdown for new facilities/machines (see openForm) ──
+  // Curated starting suggestions; already-used names (fetched from the
+  // server) are merged in ahead of these so real gym items show up too.
+  const NAME_SUGGESTIONS = {
+    machines: [
+      'Treadmill', 'Elliptical Trainer', 'Stationary Bike', 'Rowing Machine',
+      'Stair Climber', 'Bench Press', 'Squat Rack', 'Smith Machine',
+      'Lat Pulldown Machine', 'Leg Press Machine', 'Leg Extension Machine',
+      'Leg Curl Machine', 'Cable Crossover Machine', 'Chest Press Machine',
+      'Shoulder Press Machine', 'Multi-Gym Station', 'Dumbbells',
+      'Barbells', 'Kettlebells', 'Pull-Up Bar', 'Punching Bag',
+      'Battle Ropes', 'Medicine Balls',
+    ],
+    facilities: [
+      'Weight Area', 'Cardio Zone', 'Free Weights Area', 'Boxing Area',
+      'Functional Training Zone', 'Locker Room', 'Reception',
+      'Stretching Area', 'Group Class Studio',
+    ],
+  };
+
+  /** Make sure cache.equipment (the raw list backing both the facilities
+   *  and machines tabs) is loaded, then run cb — used so the name dropdown
+   *  can be populated even if the modal is opened before the grid fetch. */
+  function _ensureEquipmentLoaded(cb) {
+    if (cache.equipment !== null) { cb(); return; }
+    fetch(ENDPOINTS.equipment.list)
+      .then(res => res.json())
+      .then(data => { if (data.success) cache.equipment = data.items; cb(); })
+      .catch(() => cb());
+  }
+
+  function _populateNameOptions(type) {
+    const select = document.getElementById('cf-name-select');
+    if (!select) return;
+    const wantFacility = type === 'facilities';
+    const used = (cache.equipment || [])
+      .filter(e => !!e.is_facility === wantFacility)
+      .map(e => e.name);
+    const curated = NAME_SUGGESTIONS[type] || [];
+    const merged = [...used];
+    curated.forEach(n => { if (!merged.some(m => m.toLowerCase() === n.toLowerCase())) merged.push(n); });
+    merged.sort((a, b) => a.localeCompare(b));
+
+    const placeholder = wantFacility ? 'Select a facility/area…' : 'Select equipment or a machine…';
+    const addLabel     = wantFacility ? '+ Add New Facility/Area…' : '+ Add New Equipment/Machine…';
+    select.innerHTML =
+      `<option value="" disabled selected>${_esc(placeholder)}</option>` +
+      merged.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`).join('') +
+      `<option value="__custom__">${_esc(addLabel)}</option>`;
+  }
+
+  /** Called from the name <select>'s onchange — picking "+ Add New …"
+   *  swaps to the free-text box so staff can type a name not on the list. */
+  function onNameSelectChange() {
+    const select = document.getElementById('cf-name-select');
+    if (!select || select.value !== '__custom__') return;
+    const input = document.getElementById('cf-name');
+    const back  = document.getElementById('cf-name-toggle');
+    select.style.display = 'none';
+    input.style.display  = '';
+    input.value = '';
+    input.focus();
+    if (back) back.style.display = 'block';
+  }
+
+  /** "← Choose from list instead" link — swaps back from the free-text
+   *  box to the dropdown. */
+  function backToNameList() {
+    const select = document.getElementById('cf-name-select');
+    const input  = document.getElementById('cf-name');
+    const back   = document.getElementById('cf-name-toggle');
+    if (!select) return;
+    select.value = '';
+    select.style.display = '';
+    input.style.display  = 'none';
+    if (back) back.style.display = 'none';
+  }
+
   // ── Category suggestions + icon quick-pick (services & equipment) ──
   const CATEGORY_SUGGESTIONS = {
-    equipment: ['Boxing', 'Strengthening', 'Cardio Zone', 'Weight Loss', 'Functional Training', 'General'],
+    machines:  ['Boxing', 'Strengthening', 'Cardio Zone', 'Weight Loss', 'Functional Training', 'General'],
     services:  ['Boxing', 'Strengthening', 'Cardio Zone', 'Weight Loss', 'Coaching', 'Membership Perks', 'Facilities', 'Classes', 'General'],
+    facilities: ['Weight Area', 'Cardio Zone', 'Reception', 'Locker Room', 'Boxing Area', 'Functional Training', 'General'],
   };
   const ICON_SUGGESTIONS = {
-    equipment: ['🏋️', '💪', '🥊', '🏃', '🚴', '🤸', '🪢', '🦵', '🔩', '⬇️', '🔧', '🎯', '🧘', '🔥'],
-    services:  ['🥊', '💪', '🔥', '🏃', '🛎️', '🧑‍🏫', '🥤', '🚿', '🅿️', '📅', '🩺'],
+    machines:   ['🏋️', '💪', '🥊', '🏃', '🚴', '🤸', '🪢', '🦵', '🔩', '⬇️', '🔧', '🎯', '🧘', '🔥'],
+    services:   ['🥊', '💪', '🔥', '🏃', '🛎️', '🧑‍🏫', '🥤', '🚿', '🅿️', '📅', '🩺'],
+    facilities: ['🏢', '🚪', '🏋️', '🧘', '🚿', '🅿️', '🛎️', '🔥'],
   };
   let realCategoriesCache = null; // categories actually in use, fetched from the server
 
@@ -753,7 +899,17 @@ const ContentManager = (() => {
   function submit() {
     const type = document.getElementById('cf-type').value;
     const id = document.getElementById('cf-id').value;
-    const name = _val('cf-name');
+
+    // Name comes from the dropdown when it's the visible control (adding a
+    // new facility/machine), otherwise from the classic free-text box.
+    const nameSelect = document.getElementById('cf-name-select');
+    let name;
+    if (nameSelect && nameSelect.style.display !== 'none') {
+      name = (nameSelect.value || '').trim();
+      if (!name || name === '__custom__') { showToast('Please choose an item from the list, or add a new one.', 'error'); return; }
+    } else {
+      name = _val('cf-name');
+    }
     if (!name) { showToast('Name is required.', 'error'); return; }
 
     const fd = new FormData();
@@ -776,9 +932,9 @@ const ContentManager = (() => {
     if (type === 'services') {
       document.querySelectorAll('.cf-equipment-check:checked').forEach(cb => fd.append('equipment_ids', cb.value));
     }
-    if (type === 'equipment') {
-      const facilityCheck = document.getElementById('cf-is-facility');
-      fd.append('is_facility', (facilityCheck && facilityCheck.checked) ? 'true' : 'false');
+    if (type === 'facilities' || type === 'machines') {
+      // Determined by which tab the form was opened from, not a manual checkbox.
+      fd.append('is_facility', IS_FACILITY_TYPE[type] ? 'true' : 'false');
     }
 
     if (type === 'plans') {
@@ -829,7 +985,7 @@ const ContentManager = (() => {
       .finally(() => { pendingDelete = null; closeModal('content-delete-modal'); });
   }
 
-  return { ensureLoaded, showType, openForm, previewImage, pickIcon, submit, confirmDelete, cancelDelete, performDelete, refresh };
+  return { ensureLoaded, showType, openForm, previewImage, pickIcon, submit, confirmDelete, cancelDelete, performDelete, refresh, onNameSelectChange, backToNameList };
 })();
 
 

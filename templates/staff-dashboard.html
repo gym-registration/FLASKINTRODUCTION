@@ -672,7 +672,8 @@
           <div class="content-subtabs">
             <button class="content-subtab active" data-content-type="plans" onclick="ContentManager.showType('plans')">Membership Plans</button>
             <button class="content-subtab" data-content-type="services" onclick="ContentManager.showType('services')">Services</button>
-            <button class="content-subtab" data-content-type="equipment" onclick="ContentManager.showType('equipment')">Equipment / Machines</button>
+            <button class="content-subtab" data-content-type="facilities" onclick="ContentManager.showType('facilities')">Our Facilities</button>
+            <button class="content-subtab" data-content-type="machines" onclick="ContentManager.showType('machines')">Equipments and Machines</button>
           </div>
 
           <div class="content-toolbar">
@@ -682,7 +683,8 @@
 
           <div class="content-grid" id="content-grid-plans"></div>
           <div class="content-grid" id="content-grid-services" style="display:none;"></div>
-          <div class="content-grid" id="content-grid-equipment" style="display:none;"></div>
+          <div class="content-grid" id="content-grid-facilities" style="display:none;"></div>
+          <div class="content-grid" id="content-grid-machines" style="display:none;"></div>
         </div>
       </div>
     </div><!-- /staff-settings -->
@@ -728,8 +730,12 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">Name</label>
+      <label class="form-label" id="cf-name-label">Name</label>
+      <select class="form-input" id="cf-name-select" style="display:none;" onchange="ContentManager.onNameSelectChange()"></select>
       <input class="form-input" id="cf-name" placeholder="e.g. Monthly Membership">
+      <div id="cf-name-toggle" style="display:none;margin-top:6px;">
+        <span class="link-btn" style="font-size:12px;" onclick="ContentManager.backToNameList()">← Choose from list instead</span>
+      </div>
     </div>
 
     <div class="form-row" id="cf-plan-fields" style="display:none;">
@@ -764,6 +770,11 @@
     <div class="form-group" id="cf-inclusions-wrap" style="display:none;">
       <label class="form-label">Inclusions (one per line)</label>
       <textarea class="form-input" id="cf-inclusions" rows="4" style="resize:vertical;" placeholder="Gym Equipment Access&#10;Locker Access&#10;Free Towel Service"></textarea>
+    </div>
+
+    <div class="form-group" id="cf-equipment-wrap" style="display:none;">
+      <label class="form-label">Equipment / Machines used for this service</label>
+      <div id="cf-equipment-list" style="display:flex;flex-wrap:wrap;gap:8px;max-height:160px;overflow:auto;padding:8px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;"></div>
     </div>
 
     <div class="form-group">
