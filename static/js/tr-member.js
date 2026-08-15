@@ -385,7 +385,7 @@ const MemberModule = (() => {
     if (textEl) {
       textEl.textContent = isGcash
         ? 'Are you sure you want to submit your payment?'
-        : "You'll pay by Cash at the front desk with staff. Continue?";
+        : 'Are you sure you want to proceed with cash payment?';
     }
 
     openModal('confirm-payment-modal');

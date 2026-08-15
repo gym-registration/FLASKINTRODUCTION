@@ -389,8 +389,8 @@
               If paying by Cash, settle payment at the front desk with staff. If paying by GCash,
               attach your reference number and proof of payment above.
             </div>
-            <button class="btn btn-red" style="margin-top:16px;width:100%;" onclick="submitPaymentMethod()">
-              SUBMIT PAYMENT
+            <button class="btn btn-red" id="payment-submit-btn" style="margin-top:16px;width:100%;" onclick="submitPaymentMethod()">
+              PROCEED TO FRONT DESK
             </button>
           </div>
           {% else %}
@@ -808,8 +808,8 @@
 <div class="modal-overlay" id="confirm-payment-modal">
   <div class="modal" style="max-width:400px;">
     <button class="modal-close" onclick="cancelSubmitPayment()">✕</button>
-    <div class="modal-title" style="text-align:center;">CONFIRM PAYMENT</div>
-    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
+    <div class="modal-title" style="text-align:center;" id="confirm-payment-title">CONFIRM PAYMENT</div>
+    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;" id="confirm-payment-text">
       Are you sure you want to submit your payment?
     </div>
     <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">

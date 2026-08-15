@@ -2307,6 +2307,11 @@ def member():
     # doesn't belong in "Past Payments". Only show declined rows here if a
     # real payment method (Cash/GCash) had actually been submitted and later
     # rejected.
+    #
+    # A row the member cancelled themselves (status='cancelled', via
+    # /member/cancel-plan-request) is excluded entirely — the member
+    # withdrew the request before it went anywhere, so it should not be
+    # recorded in Past Payments at all.
     payment_rows = (
         Payment.query
         .options(joinedload(Payment.plan))
@@ -2323,7 +2328,8 @@ def member():
         'status':    p.status,
         'is_student': p.is_student,
     } for p in payment_rows
-      if not (p.status == 'rejected' and (p.method or '').startswith('Pending'))]
+      if not (p.status == 'rejected' and (p.method or '').startswith('Pending'))
+      and p.status != 'cancelled']
 
     # ── Awaiting approval (plan request submitted, staff/admin hasn't
     #    reviewed it yet — no payment can be made until it's approved) ──
