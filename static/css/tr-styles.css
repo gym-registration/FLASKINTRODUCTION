@@ -103,7 +103,7 @@ body::before {
 #screen-login {
   align-items: center;
   justify-content: center;
-  background: var(--black);
+  background: #c6c9d1;
   position: relative;
 }
 
@@ -112,8 +112,8 @@ body::before {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 60% 50% at 50% 100%, rgba(26,71,138,0.28) 0%, transparent 70%),
-    radial-gradient(ellipse 40% 30% at 50% 0%, rgba(230,30,37,0.12) 0%, transparent 60%);
+    radial-gradient(ellipse 60% 50% at 50% 100%, rgba(26,71,138,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 50% 0%, rgba(230,30,37,0.08) 0%, transparent 60%);
 }
 
 .login-box {
@@ -867,6 +867,47 @@ select.form-input option:focus {
   backdrop-filter: blur(4px);
 }
 .modal-overlay.open { display: flex; animation: fadeIn 0.2s ease; }
+
+/* Lightweight "please wait" overlay shown while a request/payment is
+   submitting — no close button, can't be dismissed, sits above other
+   modals so it's visible even if a confirm modal was just closed. */
+.loading-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.loading-overlay.open { display: flex; animation: fadeIn 0.15s ease; }
+.loading-overlay-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 36px 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-width: 240px;
+}
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-overlay-text {
+  font-size: 14px;
+  color: var(--white);
+  text-align: center;
+  line-height: 1.5;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .modal {
   background: var(--card);

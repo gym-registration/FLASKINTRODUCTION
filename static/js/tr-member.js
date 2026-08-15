@@ -47,6 +47,7 @@ const MemberModule = (() => {
     _hydrateProgressBars();
     _bindModalBackdrops();
     _initStartDateField();
+    _syncPaymentMethodButton();
     _showApprovalNoticeIfAny(memberData.plan_approved_notice);
     _showPaymentApprovedNoticeIfAny(memberData.payment_verified_notice);
     _showDeclinedNoticeIfAny(memberData.plan_declined_notice);
@@ -310,6 +311,17 @@ const MemberModule = (() => {
 
   /** Show/hide the GCash reference + proof-of-payment fields based on the
    *  payment method dropdown (Payment tab). */
+  /** Force the Submit/Proceed button to match whatever the payment-method
+   *  dropdown is actually showing, right when the page loads. Needed
+   *  because some browsers restore a <select>'s previous value on reload
+   *  (e.g. it remembers "GCash" from an earlier visit) without firing a
+   *  'change' event — so without this, the button label could silently
+   *  fall out of sync with what the dropdown displays. */
+  function _syncPaymentMethodButton() {
+    const select = document.getElementById('payment-method-select');
+    if (select) togglePaymentProofField(select);
+  }
+
   function togglePaymentProofField(select) {
     const group = document.getElementById('payment-gcash-fields');
     if (!group) return;
@@ -323,6 +335,12 @@ const MemberModule = (() => {
       if (proofEl) proofEl.value = '';
       if (previewEl) { previewEl.style.display = 'none'; previewEl.removeAttribute('src'); }
     }
+    // Cash isn't actually "submitted" online — the member still has to pay
+    // in person at the front desk, so the button shouldn't claim to submit
+    // anything. GCash is a real online submission (reference + proof sent
+    // to admin for verification), so it keeps the SUBMIT PAYMENT label.
+    const submitBtn = document.getElementById('payment-submit-btn');
+    if (submitBtn) submitBtn.textContent = isGcash ? 'SUBMIT PAYMENT' : 'PROCEED TO FRONT DESK';
   }
 
   /** Preview the uploaded GCash proof-of-payment screenshot (Payment tab) */
@@ -360,6 +378,16 @@ const MemberModule = (() => {
     }
 
     _pendingPaymentSubmission = { paymentMethod, isGcash, gcashRef, gcashProofFile };
+
+    const titleEl = document.getElementById('confirm-payment-title');
+    const textEl  = document.getElementById('confirm-payment-text');
+    if (titleEl) titleEl.textContent = isGcash ? 'CONFIRM PAYMENT' : 'PROCEED TO FRONT DESK?';
+    if (textEl) {
+      textEl.textContent = isGcash
+        ? 'Are you sure you want to submit your payment?'
+        : "You'll pay by Cash at the front desk with staff. Continue?";
+    }
+
     openModal('confirm-payment-modal');
   }
 
@@ -389,13 +417,15 @@ const MemberModule = (() => {
       if (gcashProofFile) formData.append('gcash_proof', gcashProofFile);
     }
 
-    const btn = document.querySelector('#payment-submit-panel .btn-red');
-    const originalLabel = btn ? btn.textContent : 'SUBMIT PAYMENT';
-    if (btn) { btn.disabled = true; btn.textContent = 'SUBMITTING...'; }
+    const btn = document.getElementById('payment-submit-btn');
+    const originalLabel = btn ? btn.textContent : (isGcash ? 'SUBMIT PAYMENT' : 'PROCEED TO FRONT DESK');
+    if (btn) { btn.disabled = true; btn.textContent = isGcash ? 'SUBMITTING...' : 'PROCESSING...'; }
+    showLoadingOverlay(isGcash ? 'Please wait, payment is submitting...' : 'Please wait...');
 
     fetch('/member/submit-payment-method', { method: 'POST', body: formData })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
+        hideLoadingOverlay();
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         if (!ok || !data.success) {
           showToast(data.error || 'Could not submit payment.', 'error');
@@ -410,6 +440,7 @@ const MemberModule = (() => {
         openModal('payment-submit-success-modal');
       })
       .catch(() => {
+        hideLoadingOverlay();
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         showToast('Could not reach the server. Please try again.', 'error');
       });
@@ -546,10 +577,12 @@ const MemberModule = (() => {
     const btn = document.querySelector('#member-membership .btn-red');
     const originalLabel = btn ? btn.textContent : 'REQUEST THIS PLAN';
     if (btn) { btn.disabled = true; btn.textContent = 'SUBMITTING...'; }
+    showLoadingOverlay('Please wait, membership plan is submitting...');
 
     fetch('/member/submit-payment', { method: 'POST', body: formData })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
+        hideLoadingOverlay();
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         if (!ok || !data.success) {
           showToast(data.error || 'Could not submit request.', 'error');
@@ -572,6 +605,7 @@ const MemberModule = (() => {
         _showPlanSuccessModal(data.message || 'Plan requested! Please wait for staff approval before proceeding to payment.');
       })
       .catch(() => {
+        hideLoadingOverlay();
         if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         showToast('Could not reach the server. Please try again.', 'error');
       });

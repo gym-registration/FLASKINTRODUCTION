@@ -261,6 +261,24 @@ function closeModal(id) {
   if (el) el.classList.remove('open');
 }
 
+/** Show the "please wait, submitting..." overlay while a slow request
+ *  (plan request, payment submission, etc.) is in flight, so a slow
+ *  connection doesn't make the page look frozen. Call hideLoadingOverlay()
+ *  once the request settles (success or error) — always in a .finally()
+ *  or in both the success and error branches, so it never gets stuck open. */
+function showLoadingOverlay(message) {
+  const el = document.getElementById('loading-overlay');
+  const textEl = document.getElementById('loading-overlay-text');
+  if (textEl) textEl.textContent = message || 'Please wait...';
+  if (el) el.classList.add('open');
+}
+
+/** Hide the "please wait..." overlay opened by showLoadingOverlay(). */
+function hideLoadingOverlay() {
+  const el = document.getElementById('loading-overlay');
+  if (el) el.classList.remove('open');
+}
+
 /** Payment verification (used by admin) — calls the real backend endpoint */
 function verifyPayment(btn, action) {
   const card = btn.closest('.verify-card');

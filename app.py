@@ -11,6 +11,7 @@ load_dotenv()  # Reads variables from a .env file in the project root, if presen
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
+from sqlalchemy.orm import joinedload
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -19,6 +20,33 @@ from datetime import datetime, timezone, date, timedelta
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key')
+
+# ── Static asset caching ─────────────────────────────────────
+# By default Flask re-validates every CSS/JS/image request with the browser
+# on every page load. Since these files (tr-styles.css, tr-*.js, logo, etc.)
+# rarely change, telling the browser to cache them for a week means repeat
+# visits to any dashboard skip re-downloading them entirely — a big part of
+# what makes navigation feel slow on a fresh load. Set SEND_FILE_MAX_AGE=0
+# via env var during active front-end development if you need changes to
+# show up immediately without a hard refresh.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = int(os.environ.get('SEND_FILE_MAX_AGE', 604800))  # 7 days
+
+# Auto cache-busting: append the static file's own last-modified time as a
+# ?v= query string to every url_for('static', ...) call, across every
+# template, automatically. Combined with the week-long cache above, this
+# means updated CSS/JS/images show up immediately for everyone on their very
+# next page load — no hard refresh needed — while files that haven't
+# changed still get served straight from the browser's cache. Without this,
+# a 7-day cache means anyone who visited before an update could keep seeing
+# the old file until that cache naturally expires.
+@app.url_defaults
+def _add_static_file_version(endpoint, values):
+    if endpoint == 'static' and 'filename' in values:
+        filepath = os.path.join(app.static_folder or '', values['filename'])
+        try:
+            values['v'] = int(os.stat(filepath).st_mtime)
+        except OSError:
+            pass
 
 # ── Timezone: the gym operates on Philippines time, but all timestamps are
 #    stored in the database as naive UTC. Convert to Manila only for display. ──
@@ -318,7 +346,7 @@ class Membership(db.Model):
     id          = db.Column(db.Integer, primary_key=True, autoincrement=True)
     member_id   = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
                             nullable=False, unique=True, index=True)
-    plan_id     = db.Column(db.Integer, db.ForeignKey('membership_plans.id', ondelete='SET NULL'), nullable=True)
+    plan_id     = db.Column(db.Integer, db.ForeignKey('membership_plans.id', ondelete='SET NULL'), nullable=True, index=True)
     start_date  = db.Column(db.Date, nullable=False)
     expiry_date = db.Column(db.Date, nullable=False)
     status      = db.Column(db.String(10), nullable=False, default='pending')
@@ -356,7 +384,7 @@ class Payment(db.Model):
     __tablename__    = 'payments'
     id               = db.Column(db.Integer, primary_key=True, autoincrement=True)
     member_id        = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-    plan_id          = db.Column(db.Integer, db.ForeignKey('membership_plans.id'), nullable=True)
+    plan_id          = db.Column(db.Integer, db.ForeignKey('membership_plans.id'), nullable=True, index=True)
     amount           = db.Column(db.Numeric(10, 2), nullable=False)
     method           = db.Column(db.String(32), nullable=False)
     reference_number = db.Column(db.String(60), nullable=True)
@@ -366,10 +394,10 @@ class Payment(db.Model):
     wants_coach           = db.Column(db.Boolean, nullable=False, default=False)
     coach_name             = db.Column(db.String(60), nullable=True)
     requested_start_date  = db.Column(db.Date, nullable=True)
-    status           = db.Column(db.String(10), nullable=False, default='pending')
-    recorded_by_id   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    status           = db.Column(db.String(10), nullable=False, default='pending', index=True)
+    recorded_by_id   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     notes            = db.Column(db.Text, nullable=True)
-    paid_at          = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    paid_at          = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     verified_at      = db.Column(db.DateTime, nullable=True)
     notified         = db.Column(db.Boolean, nullable=False, default=False)
     staff_viewed     = db.Column(db.Boolean, nullable=False, default=False)
@@ -383,7 +411,7 @@ class Attendance(db.Model):
     __tablename__ = 'attendance'
     id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
     member_id    = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-    check_in     = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    check_in     = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     check_out    = db.Column(db.DateTime, nullable=True)
     duration_min = db.Column(db.Integer, nullable=True)
     logged_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -914,21 +942,22 @@ def _now():
 def _otp_email_html(first_name, otp):
     """Styled HTML version of the password-reset OTP email (POWER GYM branded)."""
     digits_html = ''.join(
-        f'<td style="padding:0 6px;"><div style="width:44px;height:52px;background:#1a1d24;'
-        f'border:1px solid #2e3545;border-radius:8px;color:#f5f5f7;font-family:Arial,Helvetica,sans-serif;'
+        f'<td style="padding:0 6px;"><div style="width:44px;height:52px;background:#f2f3f6;'
+        f'border:1px solid #dcdfe6;border-radius:8px;color:#141820;font-family:Arial,Helvetica,sans-serif;'
         f'font-size:26px;font-weight:700;line-height:52px;text-align:center;">{d}</div></td>'
         for d in otp
     )
     return f"""\
 <!DOCTYPE html>
 <html>
-<body style="margin:0;padding:0;background:#050508;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#050508;padding:40px 16px;">
+<body style="margin:0;padding:0;background:#c6c9d1;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#c6c9d1;padding:40px 16px;">
     <tr>
       <td align="center">
         <table role="presentation" width="420" cellpadding="0" cellspacing="0"
-               style="max-width:420px;width:100%;background:#141820;border:1px solid #2e3545;
-                      border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+               style="max-width:420px;width:100%;background:#ffffff;border:1px solid #e2e4ea;
+                      border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;
+                      box-shadow:0 4px 18px rgba(0,0,0,0.06);">
           <tr>
             <td style="background:linear-gradient(135deg,#e61e25,#b8141c);padding:22px 24px;text-align:center;">
               <div style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:1px;">POWER GYM</div>
@@ -937,10 +966,10 @@ def _otp_email_html(first_name, otp):
           </tr>
           <tr>
             <td style="padding:32px 28px 8px 28px;text-align:center;">
-              <div style="width:64px;height:64px;margin:0 auto 18px auto;background:rgba(255,171,64,0.12);
+              <div style="width:64px;height:64px;margin:0 auto 18px auto;background:rgba(255,171,64,0.14);
                           border-radius:50%;line-height:64px;font-size:28px;">✉️</div>
-              <div style="color:#f5f5f7;font-size:18px;font-weight:700;margin-bottom:6px;">Your Verification Code</div>
-              <div style="color:#8b92a8;font-size:13px;line-height:1.6;margin-bottom:24px;">
+              <div style="color:#141820;font-size:18px;font-weight:700;margin-bottom:6px;">Your Verification Code</div>
+              <div style="color:#6b7280;font-size:13px;line-height:1.6;margin-bottom:24px;">
                 Hi {first_name}, use the code below to reset your<br>POWER GYM account password.
               </div>
             </td>
@@ -954,23 +983,23 @@ def _otp_email_html(first_name, otp):
           </tr>
           <tr>
             <td style="padding:22px 28px 6px 28px;text-align:center;">
-              <div style="color:#8b92a8;font-size:12px;">
-                This code expires in <strong style="color:#f5f5f7;">{OTP_VALID_MINUTES} minutes</strong>
-                and can be entered up to <strong style="color:#f5f5f7;">{OTP_MAX_ATTEMPTS} times</strong>.
+              <div style="color:#6b7280;font-size:12px;">
+                This code expires in <strong style="color:#141820;">{OTP_VALID_MINUTES} minutes</strong>
+                and can be entered up to <strong style="color:#141820;">{OTP_MAX_ATTEMPTS} times</strong>.
               </div>
             </td>
           </tr>
           <tr>
             <td style="padding:20px 28px 28px 28px;text-align:center;">
-              <div style="height:1px;background:#2e3545;margin-bottom:16px;"></div>
-              <div style="color:#565d70;font-size:11px;line-height:1.6;">
+              <div style="height:1px;background:#e2e4ea;margin-bottom:16px;"></div>
+              <div style="color:#9aa0b0;font-size:11px;line-height:1.6;">
                 If you didn't request this code, you can safely ignore this email —
                 your password will not be changed.
               </div>
             </td>
           </tr>
         </table>
-        <div style="color:#565d70;font-size:11px;margin-top:18px;font-family:Arial,Helvetica,sans-serif;">
+        <div style="color:#9aa0b0;font-size:11px;margin-top:18px;font-family:Arial,Helvetica,sans-serif;">
           © Power Gym. This is an automated message, please do not reply.
         </div>
       </td>
@@ -2207,6 +2236,37 @@ def member():
             else:
                 plan_status = 'Active'
 
+            # ── Payment status — deliberately kept separate from the plan
+            #    status above. "Plan Status" describes whether the membership
+            #    itself is currently in effect (Active/Pending/Expired).
+            #    "Payment Status" describes where the underlying payment sits
+            #    in staff/admin's approval pipeline for this member's most
+            #    recent request, so a member isn't left guessing why their
+            #    plan says "Pending" (e.g. staff already approved the request
+            #    — the plan is just waiting on the member to pay). ──
+            latest_payment_row = (
+                Payment.query
+                .filter_by(member_id=user.id)
+                .order_by(Payment.paid_at.desc())
+                .first()
+            )
+            payment_status = 'Verified'
+            if latest_payment_row is not None:
+                if latest_payment_row.status == 'pending':
+                    payment_status = 'Pending Staff Approval'
+                elif latest_payment_row.status == 'approved' and latest_payment_row.method.startswith('Pending'):
+                    payment_status = 'Approved — Awaiting Payment'
+                elif latest_payment_row.status == 'approved' and latest_payment_row.method == 'Cash':
+                    payment_status = 'Awaiting Staff Verification (Cash)'
+                elif latest_payment_row.status == 'approved':
+                    payment_status = 'Awaiting Admin Verification (GCash)'
+                elif latest_payment_row.status == 'verified':
+                    payment_status = 'Verified'
+                elif latest_payment_row.status == 'rejected':
+                    payment_status = 'Rejected'
+                elif latest_payment_row.status == 'cancelled':
+                    payment_status = 'Cancelled'
+
             current_plan = {
                 'name': plan_obj.name,
                 'price': plan_obj.price,
@@ -2217,6 +2277,7 @@ def member():
                 'days_used': days_used,
                 'percent_used': percent_used,
                 'status': plan_status,
+                'payment_status': payment_status,
             }
 
     # ── Attendance (current month) ──
@@ -2248,6 +2309,7 @@ def member():
     # rejected.
     payment_rows = (
         Payment.query
+        .options(joinedload(Payment.plan))
         .filter_by(member_id=user.id)
         .order_by(Payment.paid_at.desc())
         .all()
@@ -2480,6 +2542,7 @@ def _get_attendance_today():
 
     rows = (
         Attendance.query
+        .options(joinedload(Attendance.member))
         .filter(Attendance.check_in >= today_start, Attendance.check_in <= today_end)
         .order_by(Attendance.check_in.desc())
         .all()
@@ -2511,21 +2574,31 @@ def _get_members_checkin_status():
     today_start, today_end = _manila_day_bounds_utc(today)
 
     members = [m for m in _get_members_with_plans() if m['plan'] != '—']
+    member_ids = [m['id'] for m in members]
 
-    result = []
-    for m in members:
-        entries = (
+    # Single batched query for everyone's attendance today, instead of one
+    # query per member (which used to mean N extra round-trips for N members
+    # on every dashboard load — the main reason the staff dashboard felt slow).
+    todays_entries_by_member = {}
+    if member_ids:
+        todays_rows = (
             Attendance.query
             .filter(
-                Attendance.member_id == m['id'],
+                Attendance.member_id.in_(member_ids),
                 Attendance.check_in >= today_start,
                 Attendance.check_in <= today_end,
             )
             .order_by(Attendance.check_in.desc())
             .all()
         )
-        latest     = entries[0] if entries else None
-        open_entry = next((e for e in entries if e.check_out is None), None)
+        for a in todays_rows:
+            todays_entries_by_member.setdefault(a.member_id, []).append(a)
+
+    result = []
+    for m in members:
+        entries     = todays_entries_by_member.get(m['id'], [])
+        latest      = entries[0] if entries else None
+        open_entry  = next((e for e in entries if e.check_out is None), None)
 
         if open_entry is not None:
             checkin_status = 'in'
@@ -2593,6 +2666,7 @@ def staff():
     #    verified by admin and shown here for visibility only. ──
     pending_requests_rows = (
         Payment.query
+        .options(joinedload(Payment.member), joinedload(Payment.plan))
         .filter(Payment.status.in_(['pending', 'approved']))
         .order_by(Payment.paid_at.desc())
         .all()
@@ -2634,6 +2708,7 @@ def staff():
     #    tab still keeps the full approved+declined audit trail.) ──
     processed_requests_rows = (
         Payment.query
+        .options(joinedload(Payment.member), joinedload(Payment.plan))
         .filter(Payment.status == 'verified')
         .order_by(Payment.paid_at.desc())
         .limit(20)
@@ -2653,6 +2728,7 @@ def staff():
     #    requested, newest first ──
     coach_rows = (
         Payment.query
+        .options(joinedload(Payment.member), joinedload(Payment.plan))
         .filter(Payment.wants_coach.is_(True))
         .order_by(Payment.paid_at.desc())
         .all()
@@ -2753,7 +2829,9 @@ def _revenue_report(start_date, end_date):
     """Verified payments within range: totals, a breakdown per plan, and a
     breakdown of Cash payments by the staff member who recorded them (so
     front-desk cash collected by each staff member is visible at a glance)."""
-    q = Payment.query.filter(Payment.status == 'verified')
+    q = Payment.query.options(
+        joinedload(Payment.member), joinedload(Payment.plan), joinedload(Payment.recorded_by)
+    ).filter(Payment.status == 'verified')
     if start_date is not None:
         q = q.filter(Payment.paid_at >= datetime.combine(start_date, datetime.min.time()))
     q = q.filter(Payment.paid_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
@@ -2814,7 +2892,7 @@ def _attendance_report(start_date, end_date):
     start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
     end_dt   = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
 
-    q = Attendance.query.filter(Attendance.check_in < end_dt)
+    q = Attendance.query.options(joinedload(Attendance.member)).filter(Attendance.check_in < end_dt)
     if start_dt is not None:
         q = q.filter(Attendance.check_in >= start_dt)
     rows = q.order_by(Attendance.check_in.desc()).all()
@@ -3036,6 +3114,7 @@ def admin():
     # visibility but can only act on 'verify_gcash'.
     pending_payments_rows = (
         Payment.query
+        .options(joinedload(Payment.member), joinedload(Payment.plan))
         .filter(Payment.status.in_(['pending', 'approved']))
         .order_by(Payment.paid_at.desc())
         .all()
@@ -3062,6 +3141,7 @@ def admin():
     #    again once the member submits a new request and that one is approved. ──
     payment_history_rows = (
         Payment.query
+        .options(joinedload(Payment.member), joinedload(Payment.plan))
         .filter(Payment.status == 'verified')
         .order_by(Payment.paid_at.desc())
         .limit(50)
@@ -3214,6 +3294,26 @@ def _run_startup_migrations():
                 conn.commit()
                 print(f"Migration: added {table}.{column}")
 
+        # ── Indexes on columns that are filtered/sorted/joined on constantly
+        #    (payment status, plan lookups, attendance date-range queries).
+        #    Missing indexes here were forcing full table scans on every
+        #    dashboard load as the amount of data grew — this is what was
+        #    making the system feel slower and slower over time. ──
+        index_migrations = [
+            ('payments',   'idx_payments_plan_id',        'payments',   'plan_id'),
+            ('payments',   'idx_payments_status',          'payments',   'status'),
+            ('payments',   'idx_payments_recorded_by_id',  'payments',   'recorded_by_id'),
+            ('payments',   'idx_payments_paid_at',         'payments',   'paid_at'),
+            ('memberships','idx_memberships_plan_id',      'memberships','plan_id'),
+            ('attendance', 'idx_attendance_check_in',      'attendance', 'check_in'),
+        ]
+        for table, index_name, idx_table, column in index_migrations:
+            result = conn.execute(text(f"SHOW INDEX FROM {table} WHERE Key_name = '{index_name}'"))
+            if result.fetchone() is None:
+                conn.execute(text(f"CREATE INDEX {index_name} ON {idx_table} ({column})"))
+                conn.commit()
+                print(f"Migration: added index {index_name} on {table}.{column}")
+
 
 if __name__ == '__main__':
     with app.app_context():
@@ -3224,4 +3324,10 @@ if __name__ == '__main__':
         seed_default_equipment()
         seed_default_users()
         print("Tables created, plans and demo users seeded!")
-    app.run(debug=True)
+    # threaded=True lets the dev server handle multiple requests at once
+    # instead of one at a time. Without it, every asset a page needs (CSS,
+    # JS, fonts, images) gets served sequentially even though the browser
+    # requests them all in parallel — which is what was making a simple
+    # page refresh feel slow. Not related to debug mode; safe to keep on
+    # even after you turn debug off for a real deployment.
+    app.run(debug=True, threaded=True)
