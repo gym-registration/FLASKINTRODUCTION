@@ -514,6 +514,32 @@ class GymEquipment(db.Model):
         return f"<GymEquipment {self.name}>"
 
 
+class GymSettings(db.Model):
+    """Single-row table holding gym-wide settings editable by Admin —
+    currently just the GCash account members send payments to. Always
+    accessed through _get_gym_settings(), which gets/creates row id=1."""
+    __tablename__ = 'gym_settings'
+    id                 = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    gcash_number       = db.Column(db.String(20),  nullable=True)
+    gcash_account_name = db.Column(db.String(120), nullable=True)
+    updated_at         = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
+                                    onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<GymSettings gcash_number={self.gcash_number}>"
+
+
+def _get_gym_settings():
+    """Fetch the singleton settings row, creating it with sensible
+    defaults on first use so callers never have to null-check."""
+    settings = GymSettings.query.get(1)
+    if settings is None:
+        settings = GymSettings(id=1, gcash_number='0945 397 0594', gcash_account_name='LYDIA M. EMATA')
+        db.session.add(settings)
+        db.session.commit()
+    return settings
+
+
 # ── Content-management (plans / services / equipment) helpers ──────────
 def _content_role_ok():
     return session.get('role') in ('staff', 'admin')
@@ -1112,6 +1138,107 @@ def _otp_email_html(first_name, otp):
 """
 
 
+def _membership_activated_email_html(first_name, plan_name, start_date):
+    """Styled HTML congratulations email sent once a payment is approved and
+    the membership is actually activated (POWER GYM branded, mirrors the
+    OTP email's look)."""
+    start_label = start_date.strftime('%B %d, %Y')
+    plan_line = f' on the <strong style="color:#141820;">{plan_name}</strong> plan' if plan_name else ''
+    return f"""\
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#c6c9d1;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#c6c9d1;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="420" cellpadding="0" cellspacing="0"
+               style="max-width:420px;width:100%;background:#ffffff;border:1px solid #e2e4ea;
+                      border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;
+                      box-shadow:0 4px 18px rgba(0,0,0,0.06);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#e61e25,#b8141c);padding:22px 24px;text-align:center;">
+              <div style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:1px;">POWER GYM</div>
+              <div style="color:rgba(255,255,255,0.85);font-size:11px;letter-spacing:2px;margin-top:2px;">MEMBERSHIP ACTIVATED</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px 8px 28px;text-align:center;">
+              <div style="width:64px;height:64px;margin:0 auto 18px auto;background:rgba(27,175,122,0.14);
+                          border-radius:50%;line-height:64px;font-size:28px;">🎉</div>
+              <div style="color:#141820;font-size:19px;font-weight:800;margin-bottom:10px;">Congratulations, {first_name}!</div>
+              <div style="color:#3a3f4b;font-size:14px;line-height:1.7;margin-bottom:6px;">
+                Your payment has been verified and you are now officially
+                one of the members of <strong style="color:#141820;">Power Gym</strong>{plan_line}.
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:10px 28px 4px 28px;text-align:center;">
+              <div style="background:#f2f3f6;border:1px solid #dcdfe6;border-radius:10px;padding:16px 18px;">
+                <div style="color:#6b7280;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">You can start training on</div>
+                <div style="color:#141820;font-size:20px;font-weight:800;">{start_label}</div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 28px 6px 28px;text-align:center;">
+              <div style="color:#6b7280;font-size:12px;line-height:1.6;">
+                Sign in to your member dashboard anytime to check your plan status,
+                attendance, and renewal date.
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 28px 28px 28px;text-align:center;">
+              <div style="height:1px;background:#e2e4ea;margin-bottom:16px;"></div>
+              <div style="color:#9aa0b0;font-size:11px;line-height:1.6;">
+                Questions about your membership? Just ask our front desk staff.
+              </div>
+            </td>
+          </tr>
+        </table>
+        <div style="color:#9aa0b0;font-size:11px;margin-top:18px;font-family:Arial,Helvetica,sans-serif;">
+          © Power Gym. This is an automated message, please do not reply.
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
+
+
+def _send_membership_activated_email(member, plan, start_date):
+    """Best-effort congratulations email once a membership is activated by
+    an approved payment. Mirrors the OTP email's dev-mode fallback: if SMTP
+    isn't configured, or sending fails, we log it and move on rather than
+    blocking the approval itself — the membership is already active either way."""
+    if not member or not member.email:
+        return
+    plan_name = plan.name if plan else ''
+    if app.config.get('MAIL_USERNAME') and app.config.get('MAIL_PASSWORD'):
+        try:
+            msg = Message(
+                subject='POWER GYM — Welcome! Your Membership Is Active',
+                recipients=[member.email],
+                body=(
+                    f"Hi {member.first_name},\n\n"
+                    f"Congratulations — you are now officially one of the members of Power Gym"
+                    f"{f' on the {plan_name} plan' if plan_name else ''}!\n\n"
+                    f"You can start your membership on {start_date.strftime('%B %d, %Y')}.\n\n"
+                    f"Sign in to your member dashboard anytime to check your plan status, "
+                    f"attendance, and renewal date."
+                ),
+                html=_membership_activated_email_html(member.first_name, plan_name, start_date),
+            )
+            mail.send(msg)
+        except Exception as e:
+            print(f"[MAIL ERROR] Could not send membership-activated email to {member.email}: {e}")
+    else:
+        print(f"[DEV] Email not configured. Membership-activated email would be sent to "
+              f"{member.email} — plan={plan_name}, start={start_date}")
+
+
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
@@ -1671,6 +1798,8 @@ def admin_verify_payment(payment_id):
 
     db.session.commit()
 
+    _send_membership_activated_email(member, plan, membership.start_date)
+
     return jsonify(
         success=True,
         message='Payment approved — membership activated!',
@@ -2066,6 +2195,8 @@ def staff_record_payment():
 
     db.session.commit()
 
+    _send_membership_activated_email(member, plan, membership.start_date)
+
     return jsonify(
         success=True,
         message='Payment recorded successfully.',
@@ -2254,6 +2385,36 @@ def update_profile():
         'initials': initials,
         'phone':    user.phone or '',
         'birthday': user.birthday.isoformat() if user.birthday else '',
+    })
+
+
+@app.route('/admin/update-gcash-settings', methods=['POST'])
+def admin_update_gcash_settings():
+    """Admin-only: update the GCash account number/name members are shown
+    when submitting a payment. Takes effect immediately for every member,
+    since the member dashboard reads this same row on each page load."""
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    data = request.get_json(silent=True) or {}
+    gcash_number       = (data.get('gcash_number') or '').strip()
+    gcash_account_name = (data.get('gcash_account_name') or '').strip()
+
+    if not gcash_number or not gcash_account_name:
+        return jsonify(success=False, error='GCash number and account name are both required.'), 400
+    digits_only = gcash_number.replace(' ', '').replace('-', '')
+    if not _valid_phone(digits_only):
+        return jsonify(success=False, error='Enter a valid GCash number, e.g. 0917 123 4567.'), 400
+
+    settings = _get_gym_settings()
+    # Store in the same spaced format shown to members: 0917 123 4567
+    settings.gcash_number       = f"{digits_only[0:4]} {digits_only[4:7]} {digits_only[7:11]}"
+    settings.gcash_account_name = gcash_account_name.upper()
+    db.session.commit()
+
+    return jsonify(success=True, message='GCash payment details updated.', settings={
+        'gcash_number':       settings.gcash_number,
+        'gcash_account_name': settings.gcash_account_name,
     })
 
 
@@ -2641,6 +2802,7 @@ def member():
         plan_declined_notice=plan_declined_notice,
         announcements=announcements,
         new_announcements=new_announcements,
+        gcash_settings=_get_gym_settings(),
     )
 
 
@@ -3040,15 +3202,19 @@ def _bucket_counts(rows, get_date, start_date, end_date):
     return [{'label': date(y, m, 1).strftime('%b %Y'), 'value': v} for (y, m), v in buckets.items()]
 
 
-def _revenue_report(start_date, end_date):
+def _revenue_report(start_date, end_date, method=None):
     """Verified payments within range: totals, a breakdown per plan, a
     breakdown by payment method (Cash vs GCash — every payment verified by
     staff or admin lands here automatically, no manual entry needed), and a
     breakdown of Cash payments by the staff member who recorded them (so
-    front-desk cash collected by each staff member is visible at a glance)."""
+    front-desk cash collected by each staff member is visible at a glance).
+    Pass method='Cash' to restrict the whole report to Cash payments only
+    (used by the staff dashboard, which shouldn't see GCash figures)."""
     q = Payment.query.options(
         joinedload(Payment.member), joinedload(Payment.plan), joinedload(Payment.recorded_by)
     ).filter(Payment.status == 'verified')
+    if method is not None:
+        q = q.filter(Payment.method == method)
     if start_date is not None:
         q = q.filter(Payment.paid_at >= datetime.combine(start_date, datetime.min.time()))
     q = q.filter(Payment.paid_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
@@ -3096,9 +3262,13 @@ def _revenue_report(start_date, end_date):
 
 
 def _membership_report():
-    """Snapshot of every member's current status, plus new signups this month."""
-    members = _get_members_with_plans()
-    counts = {'Active': 0, 'Pending': 0, 'Expired': 0, 'Declined': 0, 'No Plan': 0}
+    """Snapshot of every member's current status, plus new signups this month.
+    Declined (and cancelled) plan requests never became a real membership,
+    so they're excluded here — they'd otherwise inflate member/status counts
+    with requests that were never actually granted."""
+    all_members = _get_members_with_plans()
+    members = [m for m in all_members if m['status'] not in ('Declined', 'Cancelled')]
+    counts = {'Active': 0, 'Pending': 0, 'Expired': 0, 'No Plan': 0}
     for m in members:
         counts[m['status']] = counts.get(m['status'], 0) + 1
 
@@ -3159,7 +3329,9 @@ def staff_report_revenue_csv():
         return redirect(url_for('login'))
     range_key = request.args.get('range', 'this_month')
     start_date, end_date, label = _report_range(range_key)
-    report = _revenue_report(start_date, end_date)
+    # Front-desk staff only ever see Cash — GCash is verified and reported
+    # on by Admin. Keep this in lockstep with /api/staff/reports/revenue.
+    report = _revenue_report(start_date, end_date, method='Cash')
 
     def rows():
         for p in report['rows']:
@@ -3174,7 +3346,7 @@ def staff_report_revenue_csv():
             ]
 
     return _csv_response(
-        f'revenue-report-{range_key}.csv',
+        f'revenue-report-cash-{range_key}.csv',
         ['Txn#', 'Member', 'Plan', 'Method', 'Amount (₱)', 'Date', 'Recorded By'],
         rows(),
     )
@@ -3247,10 +3419,14 @@ def api_admin_report(report_type):
 
     if report_type == 'membership':
         report = _membership_report()
-        status_order = ['Active', 'Pending', 'Expired', 'Declined', 'No Plan']
+        status_order = ['Active', 'Pending', 'Expired', 'No Plan']
+        # Membership is always a live current snapshot — it isn't filtered
+        # by the From/To pickers (there's no "membership status as of a
+        # past date" to look up), so the label must say that plainly
+        # instead of echoing back a date range that was never applied.
         payload = {
             'title': 'Membership Report',
-            'range_label': range_label,
+            'range_label': f"Current Snapshot \u2014 {_today_manila().strftime('%b %d, %Y')}",
             'stats': [
                 {'label': 'Total Members', 'value': str(report['total_members'])},
                 {'label': 'Active',        'value': str(report['counts'].get('Active', 0))},
@@ -3324,6 +3500,100 @@ def api_admin_report(report_type):
 
     else:
         return jsonify(success=False, error='Unknown report type.'), 400
+
+    return jsonify(success=True, report=payload)
+
+
+# ── Staff Analytics tab: live JSON report generator ──────────────────────
+# Same "Report Generator" experience as the admin dashboard — staff can pull
+# Membership, Attendance, and Revenue reports. Membership and Attendance are
+# full snapshots identical to what Admin sees (they aren't tied to a payment
+# method). Revenue is the one exception: it's always restricted to Cash
+# payments — GCash is verified and reported on by Admin, not front-desk staff.
+@app.route('/api/staff/reports/<report_type>')
+def api_staff_report(report_type):
+    if session.get('role') not in ('staff', 'admin'):
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    if report_type not in ('revenue', 'membership', 'attendance'):
+        return jsonify(success=False, error='Unknown report type.'), 400
+
+    from_str = request.args.get('from')
+    to_str   = request.args.get('to')
+    start_date, end_date, range_label = _resolve_report_window('this_month', from_str, to_str)
+
+    if report_type == 'membership':
+        report = _membership_report()
+        status_order = ['Active', 'Pending', 'Expired', 'No Plan']
+        payload = {
+            'title': 'Membership Report',
+            'range_label': f"Current Snapshot \u2014 {_today_manila().strftime('%b %d, %Y')}",
+            'stats': [
+                {'label': 'Total Members', 'value': str(report['total_members'])},
+                {'label': 'Active',        'value': str(report['counts'].get('Active', 0))},
+                {'label': 'Pending',       'value': str(report['counts'].get('Pending', 0))},
+                {'label': 'Expired',       'value': str(report['counts'].get('Expired', 0))},
+                {'label': 'New This Month','value': str(report['new_this_month'])},
+            ],
+            'headers': ['Member', 'Email', 'Plan', 'Status', 'Expiry'],
+            'rows': [[m['name'], m['email'], m['plan'], m['status'], m['expiry']] for m in report['members']],
+            'chart_label': 'Membership Status',
+            'chart_series': [
+                {'label': s, 'value': report['counts'].get(s, 0)}
+                for s in status_order if report['counts'].get(s, 0)
+            ],
+        }
+
+    elif report_type == 'attendance':
+        report = _attendance_report(start_date, end_date)
+        chart_series = _bucket_counts(
+            report['rows'], lambda a: _to_manila(a.check_in).date(), start_date, end_date
+        )
+        payload = {
+            'title': 'Attendance Report',
+            'range_label': range_label,
+            'stats': [
+                {'label': 'Total Check-ins',  'value': str(report['total_checkins'])},
+                {'label': 'Unique Members',   'value': str(report['unique_members'])},
+                {'label': 'Avg Duration',     'value': f"{report['avg_duration_min']} min"},
+            ],
+            'headers': ['Member', 'Date', 'Check-in', 'Check-out', 'Duration'],
+            'rows': [[
+                a.member.full_name if a.member else '\u2014',
+                _to_manila(a.check_in).strftime('%b %d, %Y'),
+                _to_manila(a.check_in).strftime('%I:%M %p').lstrip('0'),
+                _to_manila(a.check_out).strftime('%I:%M %p').lstrip('0') if a.check_out else '\u2014',
+                (lambda mins: (f'{mins // 60}h {mins % 60}m' if mins >= 60 else f'{mins}m'))(
+                    a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
+                ) if a.check_out else '\u2014',
+            ] for a in report['rows']],
+            'chart_label': 'Check-ins Over Time',
+            'chart_series': chart_series,
+        }
+
+    else:  # revenue — staff only ever sees Cash
+        report = _revenue_report(start_date, end_date, method='Cash')
+        payload = {
+            'title': 'Revenue Report (Cash)',
+            'range_label': range_label,
+            'stats': [
+                {'label': 'Total Cash Revenue', 'value': f"\u20b1{report['total_revenue']}"},
+                {'label': 'Transactions',       'value': str(report['transaction_count'])},
+            ],
+            'headers': ['Txn#', 'Member', 'Plan', 'Amount (\u20b1)', 'Date', 'Recorded By'],
+            'rows': [[
+                f'TXN-{9000 + p.id}',
+                p.member.full_name if p.member else '\u2014',
+                p.plan.name if p.plan else '\u2014',
+                f'{float(p.amount):,.2f}',
+                _to_manila(p.paid_at).strftime('%b %d, %Y'),
+                p.recorded_by.full_name if p.recorded_by else '\u2014',
+            ] for p in report['rows']],
+            'chart_label': 'Cash Revenue',
+            'chart_series': [{'label': 'Cash', 'value': float(report['total_revenue'].replace(',', ''))}] if report['transaction_count'] else [],
+            'by_plan': report['by_plan'],
+            'cash_by_staff': report['cash_by_staff'],
+        }
 
     return jsonify(success=True, report=payload)
 
@@ -3500,6 +3770,7 @@ def admin():
         attendance_calendar=attendance_calendar,
         announcements=announcements,
         current_user=User.query.get(session['user_id']),
+        gcash_settings=_get_gym_settings(),
     )
 
 
@@ -3655,6 +3926,7 @@ if __name__ == '__main__':
         seed_default_coaches()
         seed_default_equipment()
         seed_default_users()
+        _get_gym_settings()  # ensures the GCash settings row exists on first boot
         print("Tables created, plans and demo users seeded!")
     # threaded=True lets the dev server handle multiple requests at once
     # instead of one at a time. Without it, every asset a page needs (CSS,

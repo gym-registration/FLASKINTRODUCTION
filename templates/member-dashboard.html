@@ -381,8 +381,8 @@
             <div class="form-group" id="payment-gcash-fields" style="display:none;">
               <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
                 <div style="font-size:11px;color:var(--muted);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">Send GCash payment to</div>
-                <div style="font-family:'Bebas Neue';font-size:24px;color:var(--white);letter-spacing:1px;">0945 397 0594</div>
-                <div style="font-size:13px;color:var(--muted);margin-top:2px;">LYDIA M. EMATA</div>
+                <div style="font-family:'Bebas Neue';font-size:24px;color:var(--white);letter-spacing:1px;">{{ gcash_settings.gcash_number if gcash_settings else '0945 397 0594' }}</div>
+                <div style="font-size:13px;color:var(--muted);margin-top:2px;">{{ gcash_settings.gcash_account_name if gcash_settings else 'LYDIA M. EMATA' }}</div>
               </div>
               <label class="form-label">GCash Reference Number</label>
               <input class="form-input" id="payment-gcash-reference" placeholder="e.g. 1234567890123">
@@ -1259,8 +1259,8 @@
             <div class="form-group" id="payment-gcash-fields" style="display:none;">
               <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
                 <div style="font-size:11px;color:var(--muted);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">Send GCash payment to</div>
-                <div style="font-family:'Bebas Neue';font-size:24px;color:var(--white);letter-spacing:1px;">0945 397 0594</div>
-                <div style="font-size:13px;color:var(--muted);margin-top:2px;">LYDIA M. EMATA</div>
+                <div style="font-family:'Bebas Neue';font-size:24px;color:var(--white);letter-spacing:1px;">{{ gcash_settings.gcash_number if gcash_settings else '0945 397 0594' }}</div>
+                <div style="font-size:13px;color:var(--muted);margin-top:2px;">{{ gcash_settings.gcash_account_name if gcash_settings else 'LYDIA M. EMATA' }}</div>
               </div>
               <label class="form-label">GCash Reference Number</label>
               <input class="form-input" id="payment-gcash-reference" placeholder="e.g. 1234567890123">
@@ -2138,8 +2138,8 @@
             <div class="form-group" id="payment-gcash-fields" style="display:none;">
               <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
                 <div style="font-size:11px;color:var(--muted);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;">Send GCash payment to</div>
-                <div style="font-family:'Bebas Neue';font-size:24px;color:var(--white);letter-spacing:1px;">0945 397 0594</div>
-                <div style="font-size:13px;color:var(--muted);margin-top:2px;">LYDIA M. EMATA</div>
+                <div style="font-family:'Bebas Neue';font-size:24px;color:var(--white);letter-spacing:1px;">{{ gcash_settings.gcash_number if gcash_settings else '0945 397 0594' }}</div>
+                <div style="font-size:13px;color:var(--muted);margin-top:2px;">{{ gcash_settings.gcash_account_name if gcash_settings else 'LYDIA M. EMATA' }}</div>
               </div>
               <label class="form-label">GCash Reference Number</label>
               <input class="form-input" id="payment-gcash-reference" placeholder="e.g. 1234567890123">

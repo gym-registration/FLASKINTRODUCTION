@@ -496,83 +496,34 @@
     <!-- ── Analytics ─────────────────────── -->
     <div id="staff-analytics" class="sub-panel">
       <div class="page-header">
-        <div><div class="page-title">ANALYTICS</div><div class="page-subtitle">Revenue, membership, and attendance reports — {{ analytics.range_label }}</div></div>
+        <div><div class="page-title">ANALYTICS &amp; REPORTS</div><div class="page-subtitle">Generate business intelligence reports</div></div>
       </div>
-
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">💰 Revenue Report</div></div>
+      <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header"><div class="panel-title">Report Generator</div></div>
         <div class="panel-body">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
-            <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value" style="color:var(--green);">₱{{ analytics.revenue.total_revenue }}</div></div>
-            <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value">{{ analytics.revenue.transaction_count }}</div></div>
-            <div class="stat-card"><div class="stat-label">Cash Collected</div><div class="stat-value" style="color:var(--gold);">₱{{ analytics.revenue.cash_total }}</div></div>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);">From:</span>
+            <input type="date" id="staff-report-from" class="form-input" style="width:160px;">
+            <span style="font-size:12px;color:var(--muted);">To:</span>
+            <input type="date" id="staff-report-to"   class="form-input" style="width:160px;">
+            <button class="btn btn-outline btn-sm" onclick="clearStaffReportDateRange()">Clear Dates</button>
+            <button class="btn btn-outline" onclick="refreshStaffReport()">↻ Refresh</button>
+            <button class="btn btn-outline" onclick="exportStaffReportPDF()">🖨 PDF</button>
           </div>
-          <div class="panel-title" style="font-size:14px;margin-bottom:8px;">By Plan</div>
-          <table class="data-table" style="margin-bottom:20px;">
-            <thead><tr><th>Plan</th><th>Revenue</th></tr></thead>
-            <tbody>
-              {% for r in analytics.revenue.by_plan %}
-              <tr><td>{{ r.plan }}</td><td>₱{{ r.total }}</td></tr>
-              {% else %}
-              <tr><td colspan="2" style="text-align:center;color:var(--muted);">No revenue recorded for this period.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-          <div class="panel-title" style="font-size:14px;margin-bottom:8px;">💵 Cash Recorded by Staff</div>
-          <table class="data-table">
-            <thead><tr><th>Staff</th><th>Cash Payments</th><th>Total Collected</th></tr></thead>
-            <tbody>
-              {% for s in analytics.revenue.cash_by_staff %}
-              <tr><td>{{ s.staff }}</td><td>{{ s.count }}</td><td>₱{{ s.total }}</td></tr>
-              {% else %}
-              <tr><td colspan="3" style="text-align:center;color:var(--muted);">No cash payments recorded for this period.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap;">
-            <select class="form-input" id="revenue-report-range" style="max-width:200px;">
-              {% for key, label in report_ranges.items() %}
-              <option value="{{ key }}" {% if key == 'this_month' %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-            <button class="btn btn-red" onclick="generateReport('revenue')">GENERATE REPORT</button>
+          <div style="font-size:11px;color:var(--muted);margin:-8px 0 16px;">
+            Set both From and To dates to look up a custom range. Leave them blank (or use Clear Dates) to default to this month.
+            For the Revenue Report, only <strong style="color:var(--white);">Cash</strong> payments are included — GCash is verified and reported by Admin.
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <button class="btn btn-red" onclick="generateStaffAnalyticsReport('membership')">📋 Membership Report</button>
+            <button class="btn btn-red" onclick="generateStaffAnalyticsReport('revenue')">💰 Revenue Report</button>
+            <button class="btn btn-red" onclick="generateStaffAnalyticsReport('attendance')">📅 Attendance Report</button>
           </div>
         </div>
       </div>
-
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">👥 Membership Report</div></div>
-        <div class="panel-body">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
-            <div class="stat-card"><div class="stat-label">Total Members</div><div class="stat-value">{{ analytics.membership.total_members }}</div></div>
-            <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value" style="color:var(--green);">{{ analytics.membership.counts['Active'] }}</div></div>
-            <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" style="color:var(--gold);">{{ analytics.membership.counts['Pending'] }}</div></div>
-            <div class="stat-card"><div class="stat-label">Expired</div><div class="stat-value" style="color:var(--red);">{{ analytics.membership.counts['Expired'] }}</div></div>
-            <div class="stat-card"><div class="stat-label">New This Month</div><div class="stat-value" style="color:var(--blue);">{{ analytics.membership.new_this_month }}</div></div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button class="btn btn-red" onclick="generateReport('membership')">GENERATE REPORT</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">✅ Attendance Report</div></div>
-        <div class="panel-body">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
-            <div class="stat-card"><div class="stat-label">Total Check-ins</div><div class="stat-value">{{ analytics.attendance.total_checkins }}</div></div>
-            <div class="stat-card"><div class="stat-label">Unique Members</div><div class="stat-value">{{ analytics.attendance.unique_members }}</div></div>
-            <div class="stat-card"><div class="stat-label">Avg. Visit Duration</div><div class="stat-value">{{ analytics.attendance.avg_duration_min }}m</div></div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <select class="form-input" id="attendance-report-range" style="max-width:200px;">
-              {% for key, label in report_ranges.items() %}
-              <option value="{{ key }}" {% if key == 'this_month' %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-            <button class="btn btn-red" onclick="generateReport('attendance')">GENERATE REPORT</button>
-          </div>
-        </div>
+      <div class="panel" id="staff-report-output-panel" style="display:none;">
+        <div class="panel-header"><div class="panel-title" id="staff-report-output-title">Report</div></div>
+        <div class="panel-body" id="staff-report-output-body"></div>
       </div>
     </div><!-- /staff-analytics -->
 
@@ -859,6 +810,8 @@
 
 <script id="staff-dashboard-data" type="application/json">{{ {'new_announcements': new_announcements}|tojson }}</script>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tr-staff.js') }}"></script>
 </body>

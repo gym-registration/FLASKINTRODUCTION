@@ -317,6 +317,7 @@ const AdminModule = (() => {
             <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${report.chart_label}</div>
             ${_renderReportChartCanvas(type, report.chart_series)}
           </div>` : ''}
+          ${_renderRevenueBreakdowns(type, report)}
           ${report.rows.length ? `
           <table class="data-table">
             <thead><tr>${report.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
@@ -332,6 +333,37 @@ const AdminModule = (() => {
         title.textContent = 'Report';
         body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;">Could not load this report. Try Refresh.</div>';
       });
+  }
+
+  /** Revenue Report has two extra breakdowns the server already computes
+   *  (by plan, and Cash collected per staff member) but that were never
+   *  being shown — surface them as two side-by-side mini tables above the
+   *  full transaction list. No-op for other report types or empty data. */
+  function _renderRevenueBreakdowns(type, report) {
+    if (type !== 'revenue') return '';
+    const hasByPlan = report.by_plan && report.by_plan.length;
+    const hasByStaff = report.cash_by_staff && report.cash_by_staff.length;
+    if (!hasByPlan && !hasByStaff) return '';
+
+    const byPlanTable = hasByPlan ? `
+      <div style="flex:1;min-width:220px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Revenue by Plan</div>
+        <table class="data-table">
+          <thead><tr><th>Plan</th><th>Total</th></tr></thead>
+          <tbody>${report.by_plan.map(r => `<tr><td>${r.plan}</td><td>\u20b1${r.total}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>` : '';
+
+    const byStaffTable = hasByStaff ? `
+      <div style="flex:1;min-width:220px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Cash Collected by Staff</div>
+        <table class="data-table">
+          <thead><tr><th>Staff</th><th>Total</th><th>Txns</th></tr></thead>
+          <tbody>${report.cash_by_staff.map(r => `<tr><td>${r.staff}</td><td>\u20b1${r.total}</td><td>${r.count}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>` : '';
+
+    return `<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px;">${byPlanTable}${byStaffTable}</div>`;
   }
 
   function clearReportDateRange() {
@@ -775,12 +807,67 @@ const AdminModule = (() => {
       .catch(() => showToast('Could not reach the server. Please try again.', 'error'));
   }
 
+  /** Save the GCash account number/name shown to members on the Payment tab.
+   *  Lets admin swap accounts any time without touching code. */
+  function submitGcashSettings() {
+    const gcash_number       = _val('gcash-number');
+    const gcash_account_name = _val('gcash-account-name');
+
+    if (!gcash_number || !gcash_account_name) {
+      showToast('GCash number and account name are both required.', 'error');
+      return;
+    }
+    if (!/^09\d{2}\s?\d{3}\s?\d{4}$/.test(gcash_number)) {
+      showToast('Enter a valid GCash number, e.g. 0917 123 4567.', 'error');
+      return;
+    }
+
+    openModal('confirm-gcash-settings-modal');
+  }
+
+  function confirmGcashSettings() {
+    const gcash_number       = _val('gcash-number');
+    const gcash_account_name = _val('gcash-account-name');
+
+    if (!gcash_number || !gcash_account_name) {
+      closeModal('confirm-gcash-settings-modal');
+      showToast('GCash number and account name are both required.', 'error');
+      return;
+    }
+
+    const modalBtn = document.getElementById('confirm-gcash-settings-btn');
+    if (modalBtn) { modalBtn.disabled = true; modalBtn.textContent = 'SAVING...'; }
+
+    fetch('/admin/update-gcash-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gcash_number, gcash_account_name })
+    })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast((data && data.error) || 'Failed to update GCash details.', 'error');
+          return;
+        }
+        const numEl  = document.getElementById('gcash-number');
+        const nameEl = document.getElementById('gcash-account-name');
+        if (numEl)  numEl.value  = data.settings.gcash_number;
+        if (nameEl) nameEl.value = data.settings.gcash_account_name;
+        closeModal('confirm-gcash-settings-modal');
+        showToast(data.message || 'GCash payment details updated.', 'success');
+      })
+      .catch(() => showToast('Could not reach the server. Please try again.', 'error'))
+      .finally(() => {
+        if (modalBtn) { modalBtn.disabled = false; modalBtn.textContent = 'YES'; }
+      });
+  }
+
   return {
     init, tab, addMember, openEditMemberModal, saveEditMember, deleteMemberRow,
     generateAnalyticsReport, refreshCurrentReport, exportReportPDF, clearReportDateRange,
     viewPaymentProof, filterMembersByStatus, filterMembersTable,
     publishAnnouncement, confirmPublishAnnouncement, openEditAnnouncementModal, saveEditAnnouncement,
-    toggleAnnouncement, deleteAnnouncement
+    toggleAnnouncement, deleteAnnouncement, submitGcashSettings, confirmGcashSettings
   };
 })();
 
@@ -811,4 +898,6 @@ document.addEventListener('DOMContentLoaded', () => {
   window.saveEditAnnouncement    = AdminModule.saveEditAnnouncement;
   window.toggleAnnouncement      = AdminModule.toggleAnnouncement;
   window.deleteAnnouncement      = AdminModule.deleteAnnouncement;
+  window.submitGcashSettings     = AdminModule.submitGcashSettings;
+  window.confirmGcashSettings    = AdminModule.confirmGcashSettings;
 });

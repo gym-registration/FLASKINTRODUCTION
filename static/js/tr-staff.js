@@ -392,7 +392,266 @@ const StaffModule = (() => {
     window.location.href = `/staff/reports/${reportType}.csv${query}`;
   }
 
-  return { init, tab, promptRecordPayment, confirmRecordPayment, cancelRecordPayment, closePaymentRecordedModal, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput, generateReport, submitCoachUpdate };
+  // ── Live Analytics report generator (mirrors the admin dashboard's Report
+  //    Generator panel) — staff can pull Membership, Revenue, and Attendance
+  //    reports. Membership and Attendance are full snapshots just like Admin
+  //    sees; Revenue is the one exception and the server restricts it to
+  //    Cash payments only (GCash is Admin's to see). ──
+  let staffReportChartInstance = null;
+  let staffCurrentReportPayload = null;
+  let staffCurrentReportType = null;
+
+  function generateStaffAnalyticsReport(type) {
+    const panel = document.getElementById('staff-report-output-panel');
+    const title = document.getElementById('staff-report-output-title');
+    const body  = document.getElementById('staff-report-output-body');
+    if (!panel || !title || !body) return;
+
+    staffCurrentReportType = type;
+
+    const fromDate = document.getElementById('staff-report-from')?.value || '';
+    const toDate   = document.getElementById('staff-report-to')?.value   || '';
+    if ((fromDate && !toDate) || (!fromDate && toDate)) {
+      showToast('Please set both From and To dates, or clear them to use this month.', 'error');
+      return;
+    }
+
+    panel.style.display = 'block';
+    title.textContent = 'Loading…';
+    body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;">Generating report…</div>';
+
+    const params = new URLSearchParams();
+    if (fromDate && toDate) { params.set('from', fromDate); params.set('to', toDate); }
+
+    fetch(`/api/staff/reports/${type}?${params.toString()}`)
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast((data && data.error) || 'Could not generate report.', 'error');
+          title.textContent = 'Report';
+          body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;">Could not load this report. Try Refresh.</div>';
+          return;
+        }
+
+        const report = data.report;
+        staffCurrentReportPayload = report;
+
+        title.textContent = `${report.title} — ${report.range_label} — Generated ${new Date().toLocaleString()}`;
+        body.innerHTML = `
+          <div class="stats-grid" style="grid-template-columns:repeat(${report.stats.length},1fr);margin-bottom:14px;">
+            ${report.stats.map(s => `<div class="stat-card"><div class="stat-value" style="font-size:24px;">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join('')}
+          </div>
+          ${report.chart_series && report.chart_series.length ? `
+          <div style="margin-bottom:16px;">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${report.chart_label}</div>
+            ${_renderStaffReportChartCanvas(type, report.chart_series)}
+          </div>` : ''}
+          ${_renderStaffRevenueBreakdowns(type, report)}
+          ${report.rows.length ? `
+          <table class="data-table">
+            <thead><tr>${report.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+            <tbody>${report.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>` : '<div style="color:var(--muted);font-size:13px;padding:14px 0;">No records found for this range.</div>'}`;
+
+        if (report.chart_series && report.chart_series.length) _mountStaffReportChart(type, report.chart_series);
+
+        showToast(report.title + ' generated successfully', 'success');
+      })
+      .catch(() => {
+        showToast('Could not reach the server. Please try again.', 'error');
+        title.textContent = 'Report';
+        body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;">Could not load this report. Try Refresh.</div>';
+      });
+  }
+
+  /** Cash Revenue Report: the server also returns a by-plan breakdown and a
+   *  per-staff Cash breakdown (useful for front-desk oversight — who
+   *  collected how much) that weren't being displayed anywhere. Surface
+   *  them as two mini tables above the transaction list. */
+  function _renderStaffRevenueBreakdowns(type, report) {
+    if (type !== 'revenue') return '';
+    const hasByPlan = report.by_plan && report.by_plan.length;
+    const hasByStaff = report.cash_by_staff && report.cash_by_staff.length;
+    if (!hasByPlan && !hasByStaff) return '';
+
+    const byPlanTable = hasByPlan ? `
+      <div style="flex:1;min-width:220px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Cash Revenue by Plan</div>
+        <table class="data-table">
+          <thead><tr><th>Plan</th><th>Total</th></tr></thead>
+          <tbody>${report.by_plan.map(r => `<tr><td>${r.plan}</td><td>\u20b1${r.total}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>` : '';
+
+    const byStaffTable = hasByStaff ? `
+      <div style="flex:1;min-width:220px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Cash Collected by Staff</div>
+        <table class="data-table">
+          <thead><tr><th>Staff</th><th>Total</th><th>Txns</th></tr></thead>
+          <tbody>${report.cash_by_staff.map(r => `<tr><td>${r.staff}</td><td>\u20b1${r.total}</td><td>${r.count}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>` : '';
+
+    return `<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px;">${byPlanTable}${byStaffTable}</div>`;
+  }
+
+  function clearStaffReportDateRange() {
+    const fromEl = document.getElementById('staff-report-from');
+    const toEl   = document.getElementById('staff-report-to');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    if (staffCurrentReportType) generateStaffAnalyticsReport(staffCurrentReportType);
+  }
+
+  function refreshStaffReport() {
+    if (staffCurrentReportType) generateStaffAnalyticsReport(staffCurrentReportType);
+    else showToast('Generate a report first', 'error');
+  }
+
+  function exportStaffReportPDF() {
+    if (!staffCurrentReportPayload) { showToast('Generate a report first', 'error'); return; }
+    window.print();
+    showToast('Use Print dialog to save as PDF', 'success');
+  }
+
+  /** Meaningful, consistent bar colors per report type/label — mirrors the
+   *  palette used on the admin dashboard's Analytics tab. */
+  const _STAFF_MEMBERSHIP_BAR_COLORS = { Active: '#1baf7a', Pending: '#eda100', Expired: '#e34948', Declined: '#898781', 'No Plan': '#898781' };
+  const _STAFF_ATTENDANCE_PALETTE    = ['#3d7dd4', '#1baf7a', '#eda100', '#e34948', '#4a3aa7', '#2fb5c9', '#d6689a', '#8c8c1a'];
+
+  function _staffColorForBar(type, label, index) {
+    if (type === 'membership') return _STAFF_MEMBERSHIP_BAR_COLORS[label] || '#2a78d6';
+    if (type === 'attendance') return _STAFF_ATTENDANCE_PALETTE[index % _STAFF_ATTENDANCE_PALETTE.length];
+    return '#2a78d6'; // revenue — always a single Cash bar
+  }
+
+  /** Renders the canvas + legend markup for a report's chart. Membership
+   *  gets a pie (matches admin); Revenue and Attendance get a bar layout —
+   *  Revenue is a single horizontal Cash bar, Attendance is a bar-per-day. */
+  function _renderStaffReportChartCanvas(type, series) {
+    const label = series.map(s => `${s.label}: ${s.value}`).join(', ');
+
+    if (type === 'membership') {
+      const legend = series.map(s => `
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:2px;background:${_staffColorForBar(type, s.label)};"></span>${s.label}
+        </span>`).join('');
+      return `
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div style="position:relative;flex:0 0 auto;width:220px;height:220px;">
+            <canvas id="staff-report-chart-canvas" role="img" aria-label="Pie chart — ${label}"></canvas>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap;">${legend}</div>
+        </div>`;
+    }
+
+    if (type === 'revenue') {
+      const heightPx = Math.max(120, series.length * 50);
+      const legend = series.map(s => `
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:2px;background:${_staffColorForBar(type, s.label)};"></span>${s.label}
+        </span>`).join('');
+      return `
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div style="position:relative;flex:1;min-width:0;height:${heightPx}px;">
+            <canvas id="staff-report-chart-canvas" role="img" aria-label="Horizontal bar chart — ${label}"></canvas>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap;">${legend}</div>
+        </div>`;
+    }
+
+    // attendance — vertical bars, one per day in range
+    const heightPx = series.length > 10 ? 320 : 260;
+    return `
+      <div style="position:relative;width:100%;height:${heightPx}px;">
+        <canvas id="staff-report-chart-canvas" role="img" aria-label="Bar chart — ${label}"></canvas>
+      </div>`;
+  }
+
+  function _mountStaffReportChart(type, series) {
+    if (staffReportChartInstance) { staffReportChartInstance.destroy(); staffReportChartInstance = null; }
+    const canvas = document.getElementById('staff-report-chart-canvas');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    // This dashboard is always dark-themed — match its own palette rather
+    // than the OS light/dark preference.
+    const muted  = '#8b92a8';
+    const grid   = '#2e3545';
+    const ink    = '#f5f5f7';
+    const rotate = series.length > 8;
+    const horizontal = type === 'revenue';
+
+    if (type === 'membership') {
+      const total = series.reduce((sum, s) => sum + s.value, 0) || 1;
+      staffReportChartInstance = new Chart(canvas, {
+        type: 'pie',
+        data: {
+          labels: series.map(s => s.label),
+          datasets: [{
+            data: series.map(s => s.value),
+            backgroundColor: series.map(s => _staffColorForBar(type, s.label)),
+            borderColor: '#141820',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: typeof ChartDataLabels === 'undefined' ? undefined : {
+              color: '#0b0b0b', font: { size: 11, weight: 600 },
+              formatter: v => `${Math.round((v / total) * 100)}%`
+            }
+          }
+        },
+        plugins: typeof ChartDataLabels === 'undefined' ? [] : [ChartDataLabels]
+      });
+      return;
+    }
+
+    staffReportChartInstance = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: series.map(s => s.label),
+        datasets: [{
+          data: series.map(s => s.value),
+          backgroundColor: series.map((s, i) => _staffColorForBar(type, s.label, i)),
+          borderRadius: 3,
+          maxBarThickness: 44,
+          barPercentage: 0.6,
+          categoryPercentage: 0.7
+        }]
+      },
+      options: {
+        indexAxis: horizontal ? 'y' : 'x',
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: horizontal ? { right: 20 } : { top: 20 } },
+        plugins: {
+          legend: { display: false },
+          datalabels: typeof ChartDataLabels === 'undefined' ? undefined : {
+            anchor: 'end', align: horizontal ? 'end' : 'top', color: ink, font: { size: 11, weight: 500 },
+            formatter: v => v.toLocaleString()
+          }
+        },
+        scales: horizontal ? {
+          x: { beginAtZero: true, grid: { color: grid }, ticks: { color: muted, font: { size: 12 } } },
+          y: { grid: { display: false }, ticks: { display: false } }
+        } : {
+          x: {
+            grid: { display: false },
+            ticks: { color: muted, font: { size: 12 }, autoSkip: false, maxRotation: rotate ? 45 : 0 }
+          },
+          y: { beginAtZero: true, grid: { color: grid }, ticks: { color: muted, font: { size: 11 } } }
+        }
+      },
+      plugins: typeof ChartDataLabels === 'undefined' ? [] : [ChartDataLabels]
+    });
+  }
+
+  return { init, tab, promptRecordPayment, confirmRecordPayment, cancelRecordPayment, closePaymentRecordedModal, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput, generateReport, submitCoachUpdate,
+           generateStaffAnalyticsReport, clearStaffReportDateRange, refreshStaffReport, exportStaffReportPDF };
 })();
 
 
@@ -418,4 +677,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.onPayMemberInput      = (value) => StaffModule.onPayMemberInput(value);
   window.generateReport        = (reportType) => StaffModule.generateReport(reportType);
   window.submitCoachUpdate     = (event) => StaffModule.submitCoachUpdate(event);
+  window.generateStaffAnalyticsReport = (type) => StaffModule.generateStaffAnalyticsReport(type);
+  window.clearStaffReportDateRange    = () => StaffModule.clearStaffReportDateRange();
+  window.refreshStaffReport           = () => StaffModule.refreshStaffReport();
+  window.exportStaffReportPDF         = () => StaffModule.exportStaffReportPDF();
 });
