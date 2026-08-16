@@ -266,89 +266,85 @@ const AdminModule = (() => {
       .catch(() => showToast('Could not reach the server. Please try again.', 'error'));
   }
 
-  /** Analytics report generator */
+  /** Analytics report generator — pulls live data from the server. Every
+   *  verified Cash/GCash payment is picked up automatically since the report
+   *  reads straight from the Payment table; nothing needs to be entered here
+   *  by hand. */
   function generateAnalyticsReport(type) {
     const panel = document.getElementById('report-output-panel');
     const title = document.getElementById('report-output-title');
     const body  = document.getElementById('report-output-body');
     if (!panel || !title || !body) return;
 
-    const data = {
-      membership: {
-        title: 'Membership Report',
-        stats: [{ label: 'Active Members', value: '193' }, { label: 'Expired Members', value: '41' }, { label: 'Pending Members', value: '14' }],
-        headers: ['Member', 'Plan', 'Status', 'Expiry'],
-        rows: [['Maria Santos', 'Monthly', 'Active', 'May 10, 2026'], ['Jose Reyes', 'Yearly', 'Active', 'Apr 10, 2027'], ['Ana Cruz', 'Daily', 'Pending', 'Apr 10, 2026'], ['Carlo Dela Rosa', 'Weekly', 'Expired', 'Jan 5, 2026']],
-        chartLabel: 'Membership Status',
-        chartSeries: [{ label: 'Active', value: 193 }, { label: 'Expired', value: 41 }, { label: 'Pending', value: 14 }]
-      },
-      revenue: {
-        title: 'Revenue Report',
-        stats: [{ label: 'Daily Revenue', value: 'PHP 12,450' }, { label: 'Monthly Revenue', value: 'PHP 86,320' }, { label: 'Collection Rate', value: '97%' }],
-        headers: ['Date', 'Transactions', 'Method Split', 'Total Revenue'],
-        rows: [['Apr 10, 2026', '42', 'GCash 52% / Cash 35% / Maya 13%', 'PHP 12,450'], ['Apr 09, 2026', '38', 'GCash 48% / Cash 39% / Maya 13%', 'PHP 10,980'], ['Apr 08, 2026', '36', 'GCash 50% / Cash 37% / Maya 13%', 'PHP 10,350']],
-        chartLabel: 'Revenue Trend (PHP)',
-        chartSeries: [{ label: 'Week 1', value: 72300 }, { label: 'Week 2', value: 81200 }, { label: 'Week 3', value: 86320 }, { label: 'Week 4', value: 79880 }]
-      },
-      attendance: {
-        title: 'Attendance Report',
-        stats: [{ label: "Today's Check-ins", value: '67' }, { label: 'Avg Daily Attendance', value: '61' }, { label: 'Peak Hour', value: '6–8 AM' }],
-        headers: ['Member', 'Visits This Month', 'Last Visit', 'Trend'],
-        rows: [['Maria Santos', '18', 'Apr 10, 2026', '↑ Up'], ['Jose Reyes', '22', 'Apr 10, 2026', '→ Steady'], ['Pia Magno', '15', 'Apr 9, 2026', '↑ Up'], ['Ben Torres', '9', 'Apr 10, 2026', '↓ Down']],
-        chartLabel: 'Weekly Check-ins',
-        chartSeries: [{ label: 'Mon', value: 54 }, { label: 'Tue', value: 61 }, { label: 'Wed', value: 58 }, { label: 'Thu', value: 63 }, { label: 'Fri', value: 67 }]
-      }
-    };
+    currentReportType = type;
 
-    const report = JSON.parse(JSON.stringify(data[type]));
-    if (!report) return;
+    const range    = document.getElementById('report-range')?.value || 'this_month';
+    const fromDate = document.getElementById('report-from')?.value || '';
+    const toDate   = document.getElementById('report-to')?.value   || '';
 
-    const range = document.getElementById('report-range')?.value || 'monthly';
-    const multipliers = { daily: 0.3, weekly: 0.7, monthly: 1, yearly: 2.8 };
-    const multiplier  = multipliers[range] || 1;
-    report.chartSeries = report.chartSeries.map(item => ({ label: item.label, value: Math.max(1, Math.round(item.value * multiplier)) }));
-
-    currentReportType    = type;
-    currentReportPayload = report;
-
-    const fromDate = document.getElementById('report-from')?.value;
-    const toDate   = document.getElementById('report-to')?.value;
-    const dateTxt  = (fromDate && toDate) ? ` | ${fromDate} to ${toDate}` : '';
-
-    title.textContent = report.title + ' — Generated ' + new Date().toLocaleString() + dateTxt;
-    body.innerHTML = `
-      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px;">
-        ${report.stats.map(s => `<div class="stat-card"><div class="stat-value" style="font-size:24px;">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join('')}
-      </div>
-      <div style="margin-bottom:16px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${report.chartLabel}</div>
-        ${_renderReportBars(report.chartSeries)}
-      </div>
-      <table class="data-table">
-        <thead><tr>${report.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-        <tbody>${report.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
-      </table>`;
+    if ((fromDate && !toDate) || (!fromDate && toDate)) {
+      showToast('Please set both From and To dates, or clear them to use the preset range.', 'error');
+      return;
+    }
 
     panel.style.display = 'block';
-    showToast(report.title + ' generated successfully', 'success');
+    title.textContent = 'Loading…';
+    body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;">Generating report…</div>';
+
+    const params = new URLSearchParams({ range });
+    if (fromDate && toDate) { params.set('from', fromDate); params.set('to', toDate); }
+
+    fetch(`/api/admin/reports/${type}?${params.toString()}`)
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast((data && data.error) || 'Could not generate report.', 'error');
+          title.textContent = 'Report';
+          body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;">Could not load this report. Try Refresh.</div>';
+          return;
+        }
+
+        const report = data.report;
+        currentReportPayload = report;
+
+        title.textContent = `${report.title} — ${report.range_label} — Generated ${new Date().toLocaleString()}`;
+        body.innerHTML = `
+          <div class="stats-grid" style="grid-template-columns:repeat(${report.stats.length},1fr);margin-bottom:14px;">
+            ${report.stats.map(s => `<div class="stat-card"><div class="stat-value" style="font-size:24px;">${s.value}</div><div class="stat-label">${s.label}</div></div>`).join('')}
+          </div>
+          ${report.chart_series && report.chart_series.length ? `
+          <div style="margin-bottom:16px;">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${report.chart_label}</div>
+            ${_renderReportChartCanvas(type, report.chart_series)}
+          </div>` : ''}
+          ${report.rows.length ? `
+          <table class="data-table">
+            <thead><tr>${report.headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+            <tbody>${report.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>` : '<div style="color:var(--muted);font-size:13px;padding:14px 0;">No records found for this range.</div>'}`;
+
+        if (report.chart_series && report.chart_series.length) _mountReportChart(type, report.chart_series);
+
+        showToast(report.title + ' generated successfully', 'success');
+      })
+      .catch(() => {
+        showToast('Could not reach the server. Please try again.', 'error');
+        title.textContent = 'Report';
+        body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px 0;">Could not load this report. Try Refresh.</div>';
+      });
+  }
+
+  function clearReportDateRange() {
+    const fromEl = document.getElementById('report-from');
+    const toEl   = document.getElementById('report-to');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    if (currentReportType) generateAnalyticsReport(currentReportType);
   }
 
   function refreshCurrentReport() {
     if (currentReportType) generateAnalyticsReport(currentReportType);
-  }
-
-  function exportReportCSV() {
-    if (!currentReportPayload) { showToast('Generate a report first', 'error'); return; }
-    const headers = currentReportPayload.headers.join(',');
-    const rows    = currentReportPayload.rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const csv     = `${headers}\n${rows}`;
-    const blob    = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link    = document.createElement('a');
-    link.href     = URL.createObjectURL(blob);
-    link.download = `${currentReportType}-report.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-    showToast('CSV exported', 'success');
+    else showToast('Generate a report first', 'error');
   }
 
   function exportReportPDF() {
@@ -358,18 +354,158 @@ const AdminModule = (() => {
   }
 
   // ── Private helpers ──────────────────────────
-  function _renderReportBars(series) {
-    const maxVal = Math.max(...series.map(s => s.value));
-    return series.map(s => {
-      const width = Math.max(6, Math.round((s.value / maxVal) * 100));
-      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <div style="width:68px;font-size:12px;color:var(--muted);">${s.label}</div>
-        <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:999px;height:10px;overflow:hidden;">
-          <div style="width:${width}%;height:100%;background:linear-gradient(90deg,var(--red),var(--navy-light));transition:width 0.6s ease;"></div>
-        </div>
-        <div style="width:80px;text-align:right;font-size:12px;">${s.value}</div>
+
+  /** Meaningful, consistent bar colors per report type/label (not a rainbow
+   *  cycle) — mirrors the palette used in the "neat" reference chart. */
+  const _MEMBERSHIP_BAR_COLORS = { Active: '#1baf7a', Pending: '#eda100', Expired: '#e34948', Declined: '#898781', 'No Plan': '#898781' };
+  const _METHOD_BAR_COLORS     = { Cash: '#2a78d6', GCash: '#4a3aa7' };
+  // Attendance bars are per-day/month, not a fixed set of named categories,
+  // so there's no single "correct" color per label — cycle through a
+  // palette instead to give each bar its own color, like the sample chart.
+  const _ATTENDANCE_PALETTE    = ['#3d7dd4', '#1baf7a', '#eda100', '#e34948', '#4a3aa7', '#2fb5c9', '#d6689a', '#8c8c1a'];
+
+  function _colorForBar(type, label, index) {
+    if (type === 'membership') return _MEMBERSHIP_BAR_COLORS[label] || '#2a78d6';
+    if (type === 'revenue')    return _METHOD_BAR_COLORS[label] || '#2a78d6';
+    if (type === 'attendance') return _ATTENDANCE_PALETTE[index % _ATTENDANCE_PALETTE.length];
+    return '#2a78d6';
+  }
+
+  let _reportChartInstance = null;
+
+  function _renderReportChartCanvas(type, series) {
+    const label = series.map(s => `${s.label}: ${s.value}`).join(', ');
+
+    // Membership report: pie chart with the legend stacked to the right,
+    // matching the reference "Causes of Land Degradation" pie layout.
+    if (type === 'membership') {
+      const legend = series.map(s => `
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:2px;background:${_colorForBar(type, s.label)};"></span>${s.label}
+        </span>`).join('');
+      return `
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div style="position:relative;flex:0 0 auto;width:220px;height:220px;">
+            <canvas id="report-chart-canvas" role="img" aria-label="Pie chart — ${label}"></canvas>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap;">${legend}</div>
+        </div>`;
+    }
+
+    // Revenue report: horizontal bars with the legend stacked to the right,
+    // matching the reference "Chart A" layout (bars left, swatches right).
+    if (type === 'revenue') {
+      const heightPx = Math.max(120, series.length * 50);
+      const legend = series.map(s => `
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:2px;background:${_colorForBar(type, s.label)};"></span>${s.label}
+        </span>`).join('');
+      return `
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div style="position:relative;flex:1;min-width:0;height:${heightPx}px;">
+            <canvas id="report-chart-canvas" role="img" aria-label="Horizontal bar chart — ${label}"></canvas>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap;">${legend}</div>
+        </div>`;
+    }
+
+    const heightPx = series.length > 10 ? 320 : 260;
+    return `
+      <div style="position:relative;width:100%;height:${heightPx}px;">
+        <canvas id="report-chart-canvas" role="img" aria-label="Bar chart — ${label}"></canvas>
       </div>`;
-    }).join('');
+  }
+
+  /** Draw the actual Chart.js bar chart once the canvas above is in the DOM.
+   *  Destroys any previous instance first — Chart.js throws if you reuse a
+   *  canvas id without cleaning up the old chart bound to it. */
+  function _mountReportChart(type, series) {
+    if (_reportChartInstance) { _reportChartInstance.destroy(); _reportChartInstance = null; }
+    const canvas = document.getElementById('report-chart-canvas');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    // This dashboard is always dark-themed (see tr-styles.css) — it doesn't
+    // follow the OS light/dark preference, so the chart shouldn't either.
+    // Colors below match the dashboard's own --white/--muted/--border tokens.
+    const muted  = '#8b92a8';
+    const grid   = '#2e3545';
+    const ink    = '#f5f5f7';
+    const rotate = series.length > 8;
+    const horizontal = type === 'revenue';
+
+    if (type === 'membership') {
+      const total = series.reduce((sum, s) => sum + s.value, 0) || 1;
+      _reportChartInstance = new Chart(canvas, {
+        type: 'pie',
+        data: {
+          labels: series.map(s => s.label),
+          datasets: [{
+            data: series.map(s => s.value),
+            backgroundColor: series.map(s => _colorForBar(type, s.label)),
+            borderColor: '#141820',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: typeof ChartDataLabels === 'undefined' ? undefined : {
+              color: '#0b0b0b', font: { size: 11, weight: 600 },
+              formatter: v => `${Math.round((v / total) * 100)}%`
+            }
+          }
+        },
+        plugins: typeof ChartDataLabels === 'undefined' ? [] : [ChartDataLabels]
+      });
+      return;
+    }
+
+    _reportChartInstance = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: series.map(s => s.label),
+        datasets: [{
+          data: series.map(s => s.value),
+          backgroundColor: series.map((s, i) => _colorForBar(type, s.label, i)),
+        }]
+      },
+      options: {
+        indexAxis: horizontal ? 'y' : 'x',
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: horizontal ? { right: 20 } : { top: 20 } },
+        plugins: {
+          legend: { display: false },
+          datalabels: typeof ChartDataLabels === 'undefined' ? undefined : {
+            anchor: 'end', align: horizontal ? 'end' : 'top', color: ink, font: { size: 11, weight: 500 },
+            formatter: v => v.toLocaleString()
+          }
+        },
+        scales: horizontal ? {
+          // Value axis runs along the bottom (like Chart A's 0%–90% scale);
+          // category axis (bar labels themselves) is hidden since the
+          // color-coded legend to the right of the canvas identifies them.
+          x: {
+            beginAtZero: true,
+            grid: { color: grid },
+            ticks: { color: muted, font: { size: 12 } }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { display: false }
+          }
+        } : {
+          x: {
+            grid: { display: false },
+            ticks: { color: muted, font: { size: 12 }, autoSkip: false, maxRotation: rotate ? 45 : 0 }
+          },
+          y: { beginAtZero: true, grid: { color: grid }, ticks: { color: muted, font: { size: 11 } } }
+        }
+      },
+      plugins: typeof ChartDataLabels === 'undefined' ? [] : [ChartDataLabels]
+    });
   }
 
   function _calculateExpiry(planName) {
@@ -456,10 +592,195 @@ const AdminModule = (() => {
     if (emptyState) emptyState.style.display = (rows.length && visibleCount === 0) ? 'block' : 'none';
   }
 
+  // ── Announcements ─────────────────────────────
+  const TARGET_LABELS = { all: 'All Members', active: 'Active Members Only', expiring: 'Expiring This Month', staff: 'Staff Only' };
+
+  function _escAnn(s) {
+    return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function _announcementItemHtml(item) {
+    return `<div class="announcement-item" data-ann-id="${item.id}" data-ann-target="${item.target}" style="padding:14px;background:rgba(230,30,37,0.06);border:1px solid rgba(230,30,37,0.2);border-radius:6px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <div style="font-weight:600;margin-bottom:4px;" data-ann-title>${_escAnn(item.title)}</div>
+        <span class="badge badge-green" data-ann-status-badge>Published</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted);white-space:pre-wrap;" data-ann-body>${_escAnn(item.body)}</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted);">Posted by ${_escAnn(item.posted_by)} · <span data-ann-target-label>${TARGET_LABELS[item.target] || 'All Members'}</span> · ${_escAnn(item.created_at)}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn btn-outline btn-sm" onclick="openEditAnnouncementModal(${item.id})">EDIT</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleAnnouncement(${item.id}, this)">UNPUBLISH</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:rgba(230,30,37,0.4);" onclick="deleteAnnouncement(${item.id}, this)">DELETE</button>
+      </div>
+    </div>`;
+  }
+
+  function publishAnnouncement() {
+    const title = _val('ann-title');
+    const body  = _val('ann-message');
+
+    if (!title || !body) { showToast('Please fill in both the title and message.', 'error'); return; }
+
+    openModal('confirm-publish-announcement-modal');
+  }
+
+  function confirmPublishAnnouncement() {
+    const title  = _val('ann-title');
+    const body   = _val('ann-message');
+    const target = document.getElementById('ann-target')?.value || 'all';
+
+    if (!title || !body) {
+      closeModal('confirm-publish-announcement-modal');
+      showToast('Please fill in both the title and message.', 'error');
+      return;
+    }
+
+    const modalBtn = document.getElementById('confirm-publish-announcement-btn');
+    if (modalBtn) { modalBtn.disabled = true; modalBtn.textContent = 'PUBLISHING...'; }
+
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('body', body);
+    formData.append('target', target);
+
+    fetch('/api/announcements/save', { method: 'POST', body: formData })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast(data.error || 'Could not publish announcement.', 'error');
+          return;
+        }
+        const list = document.getElementById('admin-announcements-list');
+        const empty = document.getElementById('admin-announcements-empty');
+        if (empty) empty.remove();
+        if (list) list.insertAdjacentHTML('afterbegin', _announcementItemHtml(data.item));
+
+        document.getElementById('ann-title').value = '';
+        document.getElementById('ann-message').value = '';
+        document.getElementById('ann-target').value = 'all';
+        closeModal('confirm-publish-announcement-modal');
+        showToast('Announcement published!', 'success');
+      })
+      .catch(() => showToast('Could not reach the server. Please try again.', 'error'))
+      .finally(() => {
+        if (modalBtn) { modalBtn.disabled = false; modalBtn.textContent = 'YES'; }
+      });
+  }
+
+  let _editAnnId = null;
+
+  function openEditAnnouncementModal(id) {
+    const itemEl = document.querySelector(`.announcement-item[data-ann-id="${id}"]`);
+    if (!itemEl) { showToast('Could not find that announcement.', 'error'); return; }
+
+    _editAnnId = id;
+
+    const titleEl  = itemEl.querySelector('[data-ann-title]');
+    const bodyEl   = itemEl.querySelector('[data-ann-body]');
+    const target   = itemEl.dataset.annTarget || 'all';
+
+    document.getElementById('edit-ann-title').value   = titleEl ? titleEl.textContent.trim() : '';
+    document.getElementById('edit-ann-message').value = bodyEl  ? bodyEl.textContent.trim()  : '';
+    document.getElementById('edit-ann-target').value  = target;
+
+    openModal('edit-announcement-modal');
+  }
+
+  function saveEditAnnouncement() {
+    if (!_editAnnId) return;
+
+    const title  = _val('edit-ann-title');
+    const body   = _val('edit-ann-message');
+    const target = document.getElementById('edit-ann-target')?.value || 'all';
+
+    if (!title || !body) { showToast('Please fill in both the title and message.', 'error'); return; }
+
+    const saveBtn = document.getElementById('edit-ann-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'SAVING...'; }
+
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('body', body);
+    formData.append('target', target);
+
+    fetch(`/api/announcements/${_editAnnId}/edit`, { method: 'POST', body: formData })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast((data && data.error) || 'Could not update announcement.', 'error');
+          return;
+        }
+        const itemEl = document.querySelector(`.announcement-item[data-ann-id="${_editAnnId}"]`);
+        if (itemEl) {
+          itemEl.dataset.annTarget = data.item.target;
+          const titleEl  = itemEl.querySelector('[data-ann-title]');
+          const bodyEl   = itemEl.querySelector('[data-ann-body]');
+          const targetEl = itemEl.querySelector('[data-ann-target-label]');
+          if (titleEl)  titleEl.textContent  = data.item.title;
+          if (bodyEl)   bodyEl.textContent   = data.item.body;
+          if (targetEl) targetEl.textContent = TARGET_LABELS[data.item.target] || 'All Members';
+        }
+        closeModal('edit-announcement-modal');
+        showToast('Announcement updated.', 'success');
+      })
+      .catch(() => showToast('Could not reach the server. Please try again.', 'error'))
+      .finally(() => {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'SAVE CHANGES'; }
+      });
+  }
+
+  function toggleAnnouncement(id, btnEl) {
+    fetch(`/api/announcements/${id}/toggle`, { method: 'POST' })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast((data && data.error) || 'Could not update announcement.', 'error');
+          return;
+        }
+        const item = document.querySelector(`.announcement-item[data-ann-id="${id}"]`);
+        if (item) {
+          const badge = item.querySelector('[data-ann-status-badge]');
+          const isActive = data.item.is_active;
+          item.style.opacity = isActive ? '1' : '0.55';
+          if (badge) {
+            badge.textContent = isActive ? 'Published' : 'Unpublished';
+            badge.classList.toggle('badge-green', isActive);
+            badge.classList.toggle('badge-muted', !isActive);
+          }
+          if (btnEl) btnEl.textContent = isActive ? 'UNPUBLISH' : 'REPUBLISH';
+        }
+        showToast(data.item.is_active ? 'Announcement republished.' : 'Announcement unpublished.', 'success');
+      })
+      .catch(() => showToast('Could not reach the server. Please try again.', 'error'));
+  }
+
+  function deleteAnnouncement(id, btnEl) {
+    if (!confirm('Delete this announcement? This cannot be undone.')) return;
+
+    fetch(`/api/announcements/${id}/delete`, { method: 'POST' })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.success) {
+          showToast((data && data.error) || 'Could not delete announcement.', 'error');
+          return;
+        }
+        const item = document.querySelector(`.announcement-item[data-ann-id="${id}"]`);
+        if (item) item.remove();
+        const list = document.getElementById('admin-announcements-list');
+        if (list && !list.querySelector('.announcement-item')) {
+          list.innerHTML = '<div id="admin-announcements-empty" style="color:var(--muted);font-size:13px;padding:14px 0;">No announcements yet. Compose one above to get started.</div>';
+        }
+        showToast('Announcement deleted.', 'success');
+      })
+      .catch(() => showToast('Could not reach the server. Please try again.', 'error'));
+  }
+
   return {
     init, tab, addMember, openEditMemberModal, saveEditMember, deleteMemberRow,
-    generateAnalyticsReport, refreshCurrentReport, exportReportCSV, exportReportPDF,
-    viewPaymentProof, filterMembersByStatus, filterMembersTable
+    generateAnalyticsReport, refreshCurrentReport, exportReportPDF, clearReportDateRange,
+    viewPaymentProof, filterMembersByStatus, filterMembersTable,
+    publishAnnouncement, confirmPublishAnnouncement, openEditAnnouncementModal, saveEditAnnouncement,
+    toggleAnnouncement, deleteAnnouncement
   };
 })();
 
@@ -479,9 +800,15 @@ document.addEventListener('DOMContentLoaded', () => {
   window.deleteMemberRow         = AdminModule.deleteMemberRow;
   window.generateAnalyticsReport = AdminModule.generateAnalyticsReport;
   window.refreshCurrentReport    = AdminModule.refreshCurrentReport;
-  window.exportCurrentReportCSV  = AdminModule.exportReportCSV;
   window.exportCurrentReportPDF  = AdminModule.exportReportPDF;
+  window.clearReportDateRange    = AdminModule.clearReportDateRange;
   window.viewPaymentProof        = AdminModule.viewPaymentProof;
   window.filterAdminMembersByStatus = (status, el) => AdminModule.filterMembersByStatus(status, el);
   window.filterAdminMembersTable    = () => AdminModule.filterMembersTable();
+  window.publishAnnouncement     = AdminModule.publishAnnouncement;
+  window.confirmPublishAnnouncement = AdminModule.confirmPublishAnnouncement;
+  window.openEditAnnouncementModal = AdminModule.openEditAnnouncementModal;
+  window.saveEditAnnouncement    = AdminModule.saveEditAnnouncement;
+  window.toggleAnnouncement      = AdminModule.toggleAnnouncement;
+  window.deleteAnnouncement      = AdminModule.deleteAnnouncement;
 });

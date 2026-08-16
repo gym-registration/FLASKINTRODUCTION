@@ -1020,6 +1020,51 @@ function showToast(msg, type = 'success') {
   setTimeout(() => toast.remove(), 3100);
 }
 
+/** Toast the receiver about announcement(s) posted since their last visit.
+ *  Shared by the member and staff dashboards — `items` comes from the
+ *  server's new_announcements list (already scoped to their target
+ *  audience and de-duped against what they've already seen). Shows one
+ *  "Notice from the Admin" message box at a time; if there's more than
+ *  one, the button reads "NEXT" and cycles through the rest. */
+let _announcementNoticeQueue = [];
+let _announcementNoticeTotal = 0;
+
+function showNewAnnouncementNotices(items) {
+  if (!items || !items.length) return;
+  _announcementNoticeQueue = items.slice();
+  _announcementNoticeTotal = items.length;
+  _renderAnnouncementNotice();
+}
+
+function _renderAnnouncementNotice() {
+  if (!_announcementNoticeQueue.length) return;
+  const item = _announcementNoticeQueue[0];
+  const idx  = _announcementNoticeTotal - _announcementNoticeQueue.length + 1;
+
+  const titleEl   = document.getElementById('announcement-notice-title');
+  const bodyEl    = document.getElementById('announcement-notice-body');
+  const counterEl = document.getElementById('announcement-notice-counter');
+  const btnEl     = document.getElementById('announcement-notice-btn');
+
+  if (titleEl)   titleEl.textContent   = item.title;
+  if (bodyEl)    bodyEl.textContent    = item.body;
+  if (counterEl) counterEl.textContent = _announcementNoticeTotal > 1 ? `Notice ${idx} of ${_announcementNoticeTotal}` : '';
+  if (btnEl)     btnEl.textContent     = _announcementNoticeQueue.length > 1 ? 'NEXT' : 'OK';
+
+  openModal('announcement-notice-modal');
+}
+
+/** "OK" / "NEXT" / "✕" on the notice popup — advance to the next queued
+ *  notice, or close once they've all been shown. */
+function closeAnnouncementNoticeModal() {
+  _announcementNoticeQueue.shift();
+  if (_announcementNoticeQueue.length) {
+    _renderAnnouncementNotice();
+  } else {
+    closeModal('announcement-notice-modal');
+  }
+}
+
 
 /* ════════════════════════════════════════════════
    6. COMMON INIT — always-available globals
@@ -1031,6 +1076,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.openModal     = openModal;
   window.closeModal    = closeModal;
   window.showToast     = showToast;
+  window.showNewAnnouncementNotices = showNewAnnouncementNotices;
+  window.closeAnnouncementNoticeModal = closeAnnouncementNoticeModal;
   window.buildAttGrid  = buildAttGrid;
   window.doLogout      = doLogout;
   window.verifyPayment = verifyPayment;

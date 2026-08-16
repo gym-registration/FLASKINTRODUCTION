@@ -299,6 +299,9 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
+    # Tracks the last time this user's dashboard checked in on announcements,
+    # so we know which ones are "new" for them since their last visit.
+    last_seen_announcements_at = db.Column(db.DateTime, nullable=True)
 
     membership       = db.relationship('Membership', back_populates='member', uselist=False, cascade='all, delete-orphan')
     payments         = db.relationship('Payment', foreign_keys='Payment.member_id', back_populates='member', cascade='all, delete-orphan')
@@ -887,6 +890,105 @@ def api_delete_equipment(item_id):
     db.session.delete(item)
     db.session.commit()
     return jsonify(success=True, message='Equipment deleted.')
+
+
+# ── Content-management API: Announcements ────────────────────────────────
+def _announcement_to_dict(a):
+    return {
+        'id':         a.id,
+        'title':      a.title,
+        'body':       a.body,
+        'target':     a.target,
+        'is_active':  a.is_active,
+        'posted_by':  a.posted_by.full_name if a.posted_by else 'Admin',
+        'created_at': _to_manila(a.created_at).strftime('%b %d, %Y') if a.created_at else '',
+    }
+
+
+@app.route('/api/announcements', methods=['GET'])
+def api_list_announcements():
+    if not _content_role_ok():
+        return jsonify(success=False, error='Unauthorized.'), 403
+    items = Announcement.query.order_by(Announcement.created_at.desc()).all()
+    return jsonify(success=True, items=[_announcement_to_dict(a) for a in items])
+
+
+@app.route('/api/announcements/save', methods=['POST'])
+def api_save_announcement():
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    title  = (request.form.get('title') or '').strip()
+    body   = (request.form.get('body') or '').strip()
+    target = (request.form.get('target') or 'all').strip()
+    if target not in ('all', 'active', 'expiring', 'staff'):
+        target = 'all'
+
+    if not title:
+        return jsonify(success=False, error='Title is required.'), 400
+    if not body:
+        return jsonify(success=False, error='Message is required.'), 400
+
+    item = Announcement(
+        title=title,
+        body=body,
+        target=target,
+        posted_by_id=session.get('user_id'),
+        is_active=True,
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify(success=True, message='Announcement published.', item=_announcement_to_dict(item))
+
+
+@app.route('/api/announcements/<int:item_id>/edit', methods=['POST'])
+def api_edit_announcement(item_id):
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+    item = Announcement.query.get(item_id)
+    if not item:
+        return jsonify(success=False, error='Announcement not found.'), 404
+
+    title  = (request.form.get('title') or '').strip()
+    body   = (request.form.get('body') or '').strip()
+    target = (request.form.get('target') or 'all').strip()
+    if target not in ('all', 'active', 'expiring', 'staff'):
+        target = 'all'
+
+    if not title:
+        return jsonify(success=False, error='Title is required.'), 400
+    if not body:
+        return jsonify(success=False, error='Message is required.'), 400
+
+    item.title  = title
+    item.body   = body
+    item.target = target
+    db.session.commit()
+    return jsonify(success=True, message='Announcement updated.', item=_announcement_to_dict(item))
+
+
+@app.route('/api/announcements/<int:item_id>/toggle', methods=['POST'])
+def api_toggle_announcement(item_id):
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+    item = Announcement.query.get(item_id)
+    if not item:
+        return jsonify(success=False, error='Announcement not found.'), 404
+    item.is_active = not item.is_active
+    db.session.commit()
+    return jsonify(success=True, message='Announcement updated.', item=_announcement_to_dict(item))
+
+
+@app.route('/api/announcements/<int:item_id>/delete', methods=['POST'])
+def api_delete_announcement(item_id):
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+    item = Announcement.query.get(item_id)
+    if not item:
+        return jsonify(success=False, error='Announcement not found.'), 404
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify(success=True, message='Announcement deleted.')
 
 
 # ── Routes ────────────────────────────────────────────────────
@@ -2438,6 +2540,29 @@ def member():
     # locked behind an active plan.
     plan_active = bool(current_plan and current_plan['status'] == 'Active')
 
+    # ── Announcements — filtered per member by the admin's chosen target
+    #    audience: everyone, active members only, or members expiring
+    #    within 30 days of their current plan. ──
+    member_days_left = current_plan['days_left'] if current_plan else None
+    announcements = [
+        a for a in Announcement.query.filter_by(is_active=True).order_by(Announcement.created_at.desc()).all()
+        if a.target == 'all'
+        or (a.target == 'active' and plan_active)
+        or (a.target == 'expiring' and plan_active and member_days_left is not None and member_days_left <= 30)
+    ]
+
+    # Announcements posted since this member's last visit pop up as a
+    # "Notice from the Admin" message box on this page load, so a new
+    # notice doesn't go unnoticed — mirrors the pattern used for
+    # plan_approved_notice etc.
+    last_seen = user.last_seen_announcements_at
+    new_announcements = [
+        {'title': a.title, 'body': a.body} for a in announcements
+        if last_seen is None or (a.created_at and a.created_at > last_seen)
+    ]
+    user.last_seen_announcements_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+
     # ── Public-facing content (membership plans / services / equipment) ──
     # Sourced from the same admin/staff-editable tables that drive the home
     # page, so anything they change in Settings → Manage Content shows up
@@ -2514,6 +2639,8 @@ def member():
         plan_approved_notice=plan_approved_notice,
         payment_verified_notice=payment_verified_notice,
         plan_declined_notice=plan_declined_notice,
+        announcements=announcements,
+        new_announcements=new_announcements,
     )
 
 
@@ -2779,6 +2906,22 @@ def staff():
         'status': m['status'],
     } for m in members]
 
+    # Staff only need to see notices actually meant for them — the member-
+    # facing "All Members" / "Active Members Only" / "Expiring This Month"
+    # announcements belong on the member dashboard, not here.
+    announcements = Announcement.query.filter_by(is_active=True, target='staff').order_by(Announcement.created_at.desc()).all()
+
+    # New-since-last-visit announcements pop up as a "Notice from the
+    # Admin" message box, same as members.
+    staff_user = User.query.get(session['user_id'])
+    last_seen = staff_user.last_seen_announcements_at
+    new_announcements = [
+        {'title': a.title, 'body': a.body} for a in announcements
+        if last_seen is None or (a.created_at and a.created_at > last_seen)
+    ]
+    staff_user.last_seen_announcements_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+
     return render_template(
         'staff-dashboard.html',
         attendance_today=attendance_today,
@@ -2794,7 +2937,9 @@ def staff():
         payment_members=payment_members,
         analytics=analytics,
         report_ranges=REPORT_RANGES,
-        current_user=User.query.get(session['user_id']),
+        announcements=announcements,
+        new_announcements=new_announcements,
+        current_user=staff_user,
     )
 
 
@@ -2811,6 +2956,7 @@ def _format_currency_short(amount):
 
 
 REPORT_RANGES = {
+    'today':      'Today',
     'this_month': 'This Month',
     'last_30':    'Last 30 Days',
     'this_year':  'This Year',
@@ -2822,6 +2968,8 @@ def _report_range(range_key):
     """Resolve a report range key into a (start_date, end_date, label) tuple.
     end_date is always today; start_date is None for 'all_time' (no lower bound)."""
     today = _today_manila()
+    if range_key == 'today':
+        return today, today, REPORT_RANGES['today']
     if range_key == 'last_30':
         return today - timedelta(days=29), today, REPORT_RANGES['last_30']
     if range_key == 'this_year':
@@ -2831,8 +2979,71 @@ def _report_range(range_key):
     return date(today.year, today.month, 1), today, REPORT_RANGES['this_month']
 
 
+def _resolve_report_window(range_key, from_str=None, to_str=None):
+    """Like _report_range, but a valid custom 'from'/'to' pair (YYYY-MM-DD,
+    e.g. from a <input type=date> calendar picker) always takes priority over
+    the preset range dropdown."""
+    if from_str and to_str:
+        try:
+            start_date = datetime.strptime(from_str, '%Y-%m-%d').date()
+            end_date   = datetime.strptime(to_str, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = end_date = None
+        if start_date and end_date:
+            if start_date > end_date:
+                start_date, end_date = end_date, start_date
+            label = f"{start_date.strftime('%b %d, %Y')} \u2013 {end_date.strftime('%b %d, %Y')}"
+            return start_date, end_date, label
+    return _report_range(range_key)
+
+
+def _bucket_counts(rows, get_date, start_date, end_date):
+    """Bucket rows into a chart-friendly time series across [start_date, end_date].
+    Buckets by day when the span is <=31 days (typical for a focused date-range
+    lookup), otherwise by month (so a 'This Year' / 'All Time' / long custom
+    range still renders a readable handful of bars instead of hundreds)."""
+    if start_date is None:
+        dates = [get_date(r) for r in rows]
+        if not dates:
+            return []
+        start_date = min(dates)
+    if end_date is None:
+        end_date = _today_manila()
+    if start_date > end_date:
+        return []
+
+    span_days = (end_date - start_date).days + 1
+
+    if span_days <= 31:
+        buckets = OrderedDict()
+        d = start_date
+        while d <= end_date:
+            buckets[d] = 0
+            d += timedelta(days=1)
+        for r in rows:
+            d = get_date(r)
+            if d in buckets:
+                buckets[d] += 1
+        return [{'label': d.strftime('%b %d'), 'value': v} for d, v in buckets.items()]
+
+    buckets = OrderedDict()
+    d = date(start_date.year, start_date.month, 1)
+    end_marker = date(end_date.year, end_date.month, 1)
+    while d <= end_marker:
+        buckets[(d.year, d.month)] = 0
+        d = date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
+    for r in rows:
+        rd = get_date(r)
+        key = (rd.year, rd.month)
+        if key in buckets:
+            buckets[key] += 1
+    return [{'label': date(y, m, 1).strftime('%b %Y'), 'value': v} for (y, m), v in buckets.items()]
+
+
 def _revenue_report(start_date, end_date):
-    """Verified payments within range: totals, a breakdown per plan, and a
+    """Verified payments within range: totals, a breakdown per plan, a
+    breakdown by payment method (Cash vs GCash — every payment verified by
+    staff or admin lands here automatically, no manual entry needed), and a
     breakdown of Cash payments by the staff member who recorded them (so
     front-desk cash collected by each staff member is visible at a glance)."""
     q = Payment.query.options(
@@ -2849,6 +3060,12 @@ def _revenue_report(start_date, end_date):
         plan_name = r.plan.name if r.plan else 'Unknown'
         by_plan[plan_name] = by_plan.get(plan_name, 0) + float(r.amount)
 
+    # Every verified payment — Cash (staff-recorded) or GCash (admin-verified) —
+    # is tallied here automatically straight from the Payment table.
+    by_method = {}
+    for r in rows:
+        by_method[r.method] = by_method.get(r.method, 0) + float(r.amount)
+
     # Cash collected, grouped by the staff member who recorded it.
     cash_by_staff = {}
     cash_total = 0.0
@@ -2861,11 +3078,15 @@ def _revenue_report(start_date, end_date):
         entry['total'] += float(r.amount)
         entry['count'] += 1
 
+    gcash_total = by_method.get('GCash', 0.0)
+
     return {
         'total_revenue':   f'{float(total):,.2f}',
         'transaction_count': len(rows),
         'by_plan': [{'plan': k, 'total': f'{v:,.2f}'} for k, v in sorted(by_plan.items(), key=lambda kv: -kv[1])],
+        'by_method': [{'method': k, 'total': f'{v:,.2f}'} for k, v in sorted(by_method.items(), key=lambda kv: -kv[1])],
         'cash_total': f'{cash_total:,.2f}',
+        'gcash_total': f'{gcash_total:,.2f}',
         'cash_by_staff': [
             {'staff': k, 'total': f'{v["total"]:,.2f}', 'count': v['count']}
             for k, v in sorted(cash_by_staff.items(), key=lambda kv: -kv[1]['total'])
@@ -3006,6 +3227,105 @@ def staff_report_attendance_csv():
         ['Member', 'Date', 'Check-in', 'Check-out', 'Duration'],
         rows(),
     )
+
+
+# ── Admin Analytics tab: live JSON report generator ──────────────────────
+# Powers the "Report Generator" panel on the admin dashboard — every verified
+# Cash or GCash payment is picked up automatically (no manual entry) since it
+# reads straight from the same Payment table that staff/admin verification
+# writes to. Accepts either a preset ?range= key or an explicit ?from=&to=
+# calendar date range (the latter always wins when both are given).
+@app.route('/api/admin/reports/<report_type>')
+def api_admin_report(report_type):
+    if session.get('role') != 'admin':
+        return jsonify(success=False, error='Unauthorized.'), 403
+
+    range_key = request.args.get('range', 'this_month')
+    from_str  = request.args.get('from')
+    to_str    = request.args.get('to')
+    start_date, end_date, range_label = _resolve_report_window(range_key, from_str, to_str)
+
+    if report_type == 'membership':
+        report = _membership_report()
+        status_order = ['Active', 'Pending', 'Expired', 'Declined', 'No Plan']
+        payload = {
+            'title': 'Membership Report',
+            'range_label': range_label,
+            'stats': [
+                {'label': 'Total Members', 'value': str(report['total_members'])},
+                {'label': 'Active',        'value': str(report['counts'].get('Active', 0))},
+                {'label': 'Pending',       'value': str(report['counts'].get('Pending', 0))},
+                {'label': 'Expired',       'value': str(report['counts'].get('Expired', 0))},
+                {'label': 'New This Month','value': str(report['new_this_month'])},
+            ],
+            'headers': ['Member', 'Email', 'Plan', 'Status', 'Expiry'],
+            'rows': [[m['name'], m['email'], m['plan'], m['status'], m['expiry']] for m in report['members']],
+            'chart_label': 'Membership Status',
+            'chart_series': [
+                {'label': s, 'value': report['counts'].get(s, 0)}
+                for s in status_order if report['counts'].get(s, 0)
+            ],
+        }
+
+    elif report_type == 'revenue':
+        report = _revenue_report(start_date, end_date)
+        by_method_map = {row['method']: row['total'] for row in report['by_method']}
+        payload = {
+            'title': 'Revenue Report',
+            'range_label': range_label,
+            'stats': [
+                {'label': 'Total Revenue',  'value': f"\u20b1{report['total_revenue']}"},
+                {'label': 'Transactions',   'value': str(report['transaction_count'])},
+                {'label': 'Cash Collected', 'value': f"\u20b1{by_method_map.get('Cash', '0.00')}"},
+                {'label': 'GCash Collected','value': f"\u20b1{by_method_map.get('GCash', '0.00')}"},
+            ],
+            'headers': ['Txn#', 'Member', 'Plan', 'Method', 'Amount (\u20b1)', 'Date', 'Recorded By'],
+            'rows': [[
+                f'TXN-{9000 + p.id}',
+                p.member.full_name if p.member else '\u2014',
+                p.plan.name if p.plan else '\u2014',
+                p.method,
+                f'{float(p.amount):,.2f}',
+                _to_manila(p.paid_at).strftime('%b %d, %Y'),
+                p.recorded_by.full_name if p.recorded_by else '\u2014',
+            ] for p in report['rows']],
+            'chart_label': 'Revenue by Payment Method',
+            'chart_series': [{'label': row['method'], 'value': float(row['total'].replace(',', ''))} for row in report['by_method']],
+            'by_plan': report['by_plan'],
+            'cash_by_staff': report['cash_by_staff'],
+        }
+
+    elif report_type == 'attendance':
+        report = _attendance_report(start_date, end_date)
+        chart_series = _bucket_counts(
+            report['rows'], lambda a: _to_manila(a.check_in).date(), start_date, end_date
+        )
+        payload = {
+            'title': 'Attendance Report',
+            'range_label': range_label,
+            'stats': [
+                {'label': 'Total Check-ins',  'value': str(report['total_checkins'])},
+                {'label': 'Unique Members',   'value': str(report['unique_members'])},
+                {'label': 'Avg Duration',     'value': f"{report['avg_duration_min']} min"},
+            ],
+            'headers': ['Member', 'Date', 'Check-in', 'Check-out', 'Duration'],
+            'rows': [[
+                a.member.full_name if a.member else '\u2014',
+                _to_manila(a.check_in).strftime('%b %d, %Y'),
+                _to_manila(a.check_in).strftime('%I:%M %p').lstrip('0'),
+                _to_manila(a.check_out).strftime('%I:%M %p').lstrip('0') if a.check_out else '\u2014',
+                (lambda mins: (f'{mins // 60}h {mins % 60}m' if mins >= 60 else f'{mins}m'))(
+                    a.duration_min if a.duration_min is not None else int((a.check_out - a.check_in).total_seconds() // 60)
+                ) if a.check_out else '\u2014',
+            ] for a in report['rows']],
+            'chart_label': 'Check-ins Over Time',
+            'chart_series': chart_series,
+        }
+
+    else:
+        return jsonify(success=False, error='Unknown report type.'), 400
+
+    return jsonify(success=True, report=payload)
 
 
 def _get_coach_occupancy():
@@ -3166,6 +3486,10 @@ def admin():
         'coach_name': p.coach_name,
     } for p in payment_history_rows]
 
+    # Admin sees every announcement (including unpublished ones) so it can
+    # manage/unpublish/delete them, not just the ones currently live.
+    announcements = Announcement.query.order_by(Announcement.created_at.desc()).all()
+
     return render_template(
         'admin-dashboard.html',
         members=members,
@@ -3174,6 +3498,7 @@ def admin():
         payment_history=payment_history,
         attendance_today=attendance_today,
         attendance_calendar=attendance_calendar,
+        announcements=announcements,
         current_user=User.query.get(session['user_id']),
     )
 
@@ -3291,6 +3616,7 @@ def _run_startup_migrations():
         ('gym_equipment',  'category', "ALTER TABLE gym_equipment ADD COLUMN category VARCHAR(60) NULL"),
         ('gym_equipment',  'icon',     "ALTER TABLE gym_equipment ADD COLUMN icon VARCHAR(8) NULL"),
         ('gym_equipment',  'is_facility', "ALTER TABLE gym_equipment ADD COLUMN is_facility TINYINT(1) NOT NULL DEFAULT 0"),
+        ('users', 'last_seen_announcements_at', "ALTER TABLE users ADD COLUMN last_seen_announcements_at DATETIME NULL"),
     ]
     with db.engine.connect() as conn:
         for table, column, ddl in migrations:

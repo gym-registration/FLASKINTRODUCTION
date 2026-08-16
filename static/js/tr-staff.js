@@ -23,8 +23,21 @@ const StaffModule = (() => {
     _bindModalBackdrops();
     Navigation.activateTab('staff', 'overview', document.getElementById('nav-staff-overview'));
 
+    showNewAnnouncementNotices(_parseStaffDashboardData().new_announcements);
+
     _tickLiveDurations();
     setInterval(_tickLiveDurations, 1000);
+  }
+
+  /** Parse the staff-dashboard-data JSON <script> tag embedded by the server. */
+  function _parseStaffDashboardData() {
+    const el = document.getElementById('staff-dashboard-data');
+    if (!el) return {};
+    try {
+      return JSON.parse(el.textContent || el.innerText || '{}');
+    } catch (e) {
+      return {};
+    }
   }
 
   /** Update every "Ongoing" duration cell to show real elapsed time, ticking every second */

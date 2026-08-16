@@ -51,6 +51,7 @@ const MemberModule = (() => {
     _showApprovalNoticeIfAny(memberData.plan_approved_notice);
     _showPaymentApprovedNoticeIfAny(memberData.payment_verified_notice);
     _showDeclinedNoticeIfAny(memberData.plan_declined_notice);
+    showNewAnnouncementNotices(memberData.new_announcements);
 
     // Load membership-plan and service content managed by admin/staff
     // (Settings → Manage Content) — keeps prices, descriptions, and

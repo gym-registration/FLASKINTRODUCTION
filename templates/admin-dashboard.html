@@ -336,18 +336,17 @@
       <div class="panel" style="margin-bottom:20px;">
         <div class="panel-header"><div class="panel-title">Report Generator</div></div>
         <div class="panel-body">
-          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
-            <select id="report-range" class="form-input" style="width:180px;">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly" selected>Monthly</option>
-              <option value="yearly">Yearly</option>
-            </select>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);">From:</span>
             <input type="date" id="report-from" class="form-input" style="width:160px;">
+            <span style="font-size:12px;color:var(--muted);">To:</span>
             <input type="date" id="report-to"   class="form-input" style="width:160px;">
+            <button class="btn btn-outline btn-sm" onclick="clearReportDateRange()">Clear Dates</button>
             <button class="btn btn-outline" onclick="refreshCurrentReport()">↻ Refresh</button>
-            <button class="btn btn-outline" onclick="exportCurrentReportCSV()">⬇ CSV</button>
             <button class="btn btn-outline" onclick="exportCurrentReportPDF()">🖨 PDF</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin:-8px 0 16px;">
+            Set both From and To dates to look up a custom range. Leave them blank (or use Clear Dates) to default to this month.
           </div>
           <div style="display:flex;gap:12px;flex-wrap:wrap;">
             <button class="btn btn-red" onclick="generateAnalyticsReport('membership')">📋 Membership Report</button>
@@ -366,30 +365,49 @@
     <div id="admin-announcements" class="sub-panel">
       <div class="page-header">
         <div><div class="page-title">ANNOUNCEMENTS</div><div class="page-subtitle">Broadcast messages to all members</div></div>
-        <button class="btn btn-red" onclick="showToast('Announcement posted!','success')">+ POST ANNOUNCEMENT</button>
+        <button class="btn btn-red" onclick="document.getElementById('ann-title').focus()">+ POST ANNOUNCEMENT</button>
       </div>
       <div class="panel">
         <div class="panel-header"><div class="panel-title">Compose Announcement</div></div>
         <div class="panel-body">
-          <div class="form-group"><label class="form-label">Title</label><input class="form-input" placeholder="e.g. Gym Maintenance Schedule"></div>
-          <div class="form-group"><label class="form-label">Message</label><textarea class="form-input" rows="4" placeholder="Type your announcement here..." style="resize:vertical;"></textarea></div>
+          <div class="form-group"><label class="form-label">Title</label><input class="form-input" id="ann-title" placeholder="e.g. Gym Maintenance Schedule"></div>
+          <div class="form-group"><label class="form-label">Message</label><textarea class="form-input" id="ann-message" rows="4" placeholder="Type your announcement here..." style="resize:vertical;"></textarea></div>
           <div class="form-group"><label class="form-label">Target Audience</label>
-            <select class="form-input">
-              <option>All Members</option>
-              <option>Active Members Only</option>
-              <option>Expiring This Month</option>
+            <select class="form-input" id="ann-target">
+              <option value="all">All Members</option>
+              <option value="active">Active Members Only</option>
+              <option value="expiring">Expiring This Month</option>
+              <option value="staff">Staff Only</option>
             </select>
           </div>
-          <button class="btn btn-red" onclick="showToast('Announcement published!','success')">PUBLISH ANNOUNCEMENT</button>
+          <button class="btn btn-red" id="ann-publish-btn" onclick="publishAnnouncement()">PUBLISH ANNOUNCEMENT</button>
         </div>
       </div>
       <div class="panel">
         <div class="panel-header"><div class="panel-title">Active Announcements</div></div>
         <div class="panel-body">
-          <div style="padding:14px;background:rgba(230,30,37,0.06);border:1px solid rgba(230,30,37,0.2);border-radius:6px;margin-bottom:12px;">
-            <div style="font-weight:600;margin-bottom:4px;">Gym Attire Policy — July 2025</div>
-            <div style="font-size:13px;color:var(--muted);">TO ALL MEMBERS STARTING JULY 2025 — EVERYONE IS REQUIRED TO WEAR PROPER GYM ATTIRE</div>
-            <div style="margin-top:8px;font-size:11px;color:var(--muted);">Posted by Admin · All Members</div>
+          <div id="admin-announcements-list">
+            {% for a in announcements %}
+            <div class="announcement-item" data-ann-id="{{ a.id }}" data-ann-target="{{ a.target }}" style="padding:14px;background:rgba(230,30,37,0.06);border:1px solid rgba(230,30,37,0.2);border-radius:6px;margin-bottom:12px;{% if not a.is_active %}opacity:0.55;{% endif %}">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                <div style="font-weight:600;margin-bottom:4px;" data-ann-title>{{ a.title }}</div>
+                <span class="badge {{ 'badge-green' if a.is_active else 'badge-muted' }}" data-ann-status-badge>{{ 'Published' if a.is_active else 'Unpublished' }}</span>
+              </div>
+              <div style="font-size:13px;color:var(--muted);white-space:pre-wrap;" data-ann-body>{{ a.body }}</div>
+              <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+                Posted by {{ a.posted_by.full_name if a.posted_by else 'Admin' }}
+                · <span data-ann-target-label>{{ {'all':'All Members','active':'Active Members Only','expiring':'Expiring This Month','staff':'Staff Only'}[a.target] }}</span>
+                · {{ a.created_at.strftime('%b %d, %Y') if a.created_at else '' }}
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px;">
+                <button class="btn btn-outline btn-sm" onclick="openEditAnnouncementModal({{ a.id }})">EDIT</button>
+                <button class="btn btn-outline btn-sm" onclick="toggleAnnouncement({{ a.id }}, this)">{{ 'UNPUBLISH' if a.is_active else 'REPUBLISH' }}</button>
+                <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:rgba(230,30,37,0.4);" onclick="deleteAnnouncement({{ a.id }}, this)">DELETE</button>
+              </div>
+            </div>
+            {% else %}
+            <div id="admin-announcements-empty" style="color:var(--muted);font-size:13px;padding:14px 0;">No announcements yet. Compose one above to get started.</div>
+            {% endfor %}
           </div>
         </div>
       </div>
@@ -656,6 +674,38 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="confirm-publish-announcement-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closeModal('confirm-publish-announcement-modal')">✕</button>
+    <div class="modal-title" style="text-align:center;">CONFIRM PUBLISH</div>
+    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
+      Are you sure you want to publish this notice?
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="closeModal('confirm-publish-announcement-modal')">NO</button>
+      <button class="btn btn-red" id="confirm-publish-announcement-btn" style="width:100%;justify-content:center;" onclick="confirmPublishAnnouncement()">YES</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="edit-announcement-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('edit-announcement-modal')">✕</button>
+    <div class="modal-title">EDIT ANNOUNCEMENT</div>
+    <div class="form-group"><label class="form-label">Title</label><input class="form-input" id="edit-ann-title" placeholder="e.g. Gym Maintenance Schedule"></div>
+    <div class="form-group"><label class="form-label">Message</label><textarea class="form-input" id="edit-ann-message" rows="4" placeholder="Type your announcement here..." style="resize:vertical;"></textarea></div>
+    <div class="form-group"><label class="form-label">Target Audience</label>
+      <select class="form-input" id="edit-ann-target">
+        <option value="all">All Members</option>
+        <option value="active">Active Members Only</option>
+        <option value="expiring">Expiring This Month</option>
+        <option value="staff">Staff Only</option>
+      </select>
+    </div>
+    <button class="btn btn-red" id="edit-ann-save-btn" style="width:100%;margin-top:8px;" onclick="saveEditAnnouncement()">SAVE CHANGES</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="add-member-modal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('add-member-modal')">✕</button>
@@ -709,6 +759,8 @@
 <div class="toast-container" id="toast-container"></div>
 
 <script id="admin-dashboard-data" type="application/json">{{ attendance_calendar|tojson }}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tr-admin.js') }}"></script>
 </body>

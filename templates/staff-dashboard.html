@@ -479,11 +479,15 @@
         <div class="panel notice-panel" style="margin-bottom:0;">
           <div class="panel-header"><div class="panel-title">📢 Active Notices</div></div>
           <div class="panel-body">
+            {% for a in announcements %}
             <div style="margin-bottom:12px;">
-              <div style="font-weight:600;margin-bottom:4px;color:var(--gold);">Gym Attire Policy</div>
-              <div style="font-size:13px;color:var(--white);">Starting July 2025 — all members must wear proper gym attire.</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px;">Posted by Admin</div>
+              <div style="font-weight:600;margin-bottom:4px;color:var(--gold);">{{ a.title }}</div>
+              <div style="font-size:13px;color:var(--white);white-space:pre-wrap;">{{ a.body }}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">Posted by {{ a.posted_by.full_name if a.posted_by else 'Admin' }} · {{ a.created_at.strftime('%b %d, %Y') if a.created_at else '' }}</div>
             </div>
+            {% else %}
+            <div style="color:var(--muted);font-size:13px;">No active notices right now.</div>
+            {% endfor %}
           </div>
         </div>
       </div>
@@ -836,8 +840,24 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="announcement-notice-modal">
+  <div class="modal" style="max-width:440px;">
+    <button class="modal-close" onclick="closeAnnouncementNoticeModal()">✕</button>
+    <div style="display:flex;justify-content:center;margin-bottom:14px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(245,197,24,0.15);border:1px solid rgba(245,197,24,0.3);display:flex;align-items:center;justify-content:center;font-size:26px;">📢</div>
+    </div>
+    <div class="modal-title" style="text-align:center;">NOTICE FROM THE ADMIN</div>
+    <div id="announcement-notice-title" style="font-weight:700;text-align:center;margin-top:12px;color:var(--gold);"></div>
+    <div id="announcement-notice-body" style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:10px 0;white-space:pre-wrap;"></div>
+    <div id="announcement-notice-counter" style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:16px;"></div>
+    <button class="btn btn-red" id="announcement-notice-btn" style="width:100%;justify-content:center;" onclick="closeAnnouncementNoticeModal()">OK</button>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
+
+<script id="staff-dashboard-data" type="application/json">{{ {'new_announcements': new_announcements}|tojson }}</script>
 
 <script src="{{ url_for('static', filename='js/tr-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/tr-staff.js') }}"></script>
