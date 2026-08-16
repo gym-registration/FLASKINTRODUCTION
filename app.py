@@ -643,20 +643,36 @@ def _group_content_by_category(items, default_icon='🛎️'):
 # ── Content-management API: Category picker ─────────────────────────────
 @app.route('/api/content/categories', methods=['GET'])
 def api_list_categories():
-    """Every category currently in use across Services and Equipment, so
-    the staff/admin form can offer real, already-typed values instead of a
-    fixed hardcoded list — keeping a service's category (e.g. "Boxing")
-    spelled exactly the same as the equipment tagged under it, which is
-    what makes them group together correctly on the member dashboard."""
+    """Categories currently in use, so the staff/admin form can offer real,
+    already-typed values instead of a fixed hardcoded list — keeping a
+    service's category (e.g. "Boxing") spelled exactly the same as the
+    equipment tagged under it, which is what makes them group together
+    correctly on the member dashboard.
+
+    Accepts an optional ?type= filter: 'services', 'machines', or
+    'facilities'. Facilities and Machines both live in the GymEquipment
+    table (split by is_facility), so without this split a facility-only
+    category (e.g. "Cardio Zone" on the Cardio Area facility) would leak
+    into the Machines form, and vice versa. With no type given, everything
+    is merged (legacy/back-compat behavior)."""
     if not _content_role_ok():
         return jsonify(success=False, error='Unauthorized.'), 403
+    content_type = (request.args.get('type') or '').strip().lower()
     used = set()
-    for row in GymService.query.with_entities(GymService.category).distinct():
-        if row[0] and row[0].strip():
-            used.add(row[0].strip())
-    for row in GymEquipment.query.with_entities(GymEquipment.category).distinct():
-        if row[0] and row[0].strip():
-            used.add(row[0].strip())
+    if content_type in ('', 'services'):
+        for row in GymService.query.with_entities(GymService.category).distinct():
+            if row[0] and row[0].strip():
+                used.add(row[0].strip())
+    if content_type in ('', 'machines'):
+        for row in (GymEquipment.query.filter_by(is_facility=False)
+                    .with_entities(GymEquipment.category).distinct()):
+            if row[0] and row[0].strip():
+                used.add(row[0].strip())
+    if content_type in ('', 'facilities'):
+        for row in (GymEquipment.query.filter_by(is_facility=True)
+                    .with_entities(GymEquipment.category).distinct()):
+            if row[0] and row[0].strip():
+                used.add(row[0].strip())
     return jsonify(success=True, categories=sorted(used, key=str.lower))
 
 
@@ -1023,7 +1039,12 @@ def api_delete_announcement(item_id):
 def home():
     plans     = MembershipPlan.query.filter_by(is_active=True).order_by(MembershipPlan.sort_order, MembershipPlan.id).all()
     services  = GymService.query.filter_by(is_active=True).order_by(GymService.sort_order, GymService.id).all()
-    equipment = GymEquipment.query.filter_by(is_active=True).order_by(GymEquipment.sort_order, GymEquipment.id).all()
+    # Public landing page only shows facility-zone photos (Weight Area,
+    # Cardio Area, etc.) — real machines/equipment are member-only and
+    # live on the member dashboard's "Gym Machines and Equipment" list.
+    equipment = (GymEquipment.query
+                 .filter_by(is_active=True, is_facility=True)
+                 .order_by(GymEquipment.sort_order, GymEquipment.id).all())
     return render_template('home.html', plans=plans, services=services, equipment=equipment)
 
 @app.route('/trmem')
