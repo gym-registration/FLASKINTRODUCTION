@@ -54,6 +54,9 @@
       <div class="nav-item" id="nav-admin-staffmgmt" onclick="adminTab('staffmgmt',this)">
         <span class="nav-icon">🔑</span> Staff Accounts
       </div>
+      <div class="nav-item" id="nav-admin-coach" onclick="adminTab('coach',this)">
+        <span class="nav-icon">🏋</span> Coach
+      </div>
     </nav>
 
     <div class="sidebar-footer">
@@ -434,6 +437,52 @@
         </table>
       </div>
     </div><!-- /admin-staffmgmt -->
+
+    <!-- ── Coach ───────────────── -->
+    <div id="admin-coach" class="sub-panel">
+      <div class="page-header">
+        <div><div class="page-title">COACHES</div><div class="page-subtitle">Set each coach's available days, capacity, and fee</div></div>
+      </div>
+      <div class="panel" style="margin-bottom:20px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+          {% for c in coaches %}
+          <form class="coach-card" data-coach-update onsubmit="return submitCoachUpdate(event)"
+                style="border:1px solid var(--border,#333);border-radius:10px;padding:16px;">
+            <input type="hidden" name="coach_id" value="{{ c.id }}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <div style="font-weight:600;font-size:15px;">{{ c.name }}</div>
+              <span class="badge {{ 'badge-red' if c.is_full else 'badge-green' }}">
+                {{ c.current_members }}/{{ c.max_members }} members
+              </span>
+            </div>
+
+            <label class="form-label" style="font-size:12px;">Available Days</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px;">
+              {% for day in coach_days %}
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);">
+                <input type="checkbox" name="available_days" value="{{ day }}"
+                       {% if day in c.available_days %}checked{% endif %}>
+                {{ day }}
+              </label>
+              {% endfor %}
+            </div>
+
+            <label class="form-label" style="font-size:12px;">Max Members</label>
+            <input class="form-input" type="number" name="max_members" min="1"
+                   value="{{ c.max_members }}" style="margin-bottom:12px;">
+
+            <label class="form-label" style="font-size:12px;">Coach Fee (₱, added on top of the plan price)</label>
+            <input class="form-input" type="number" name="fee" min="0" step="0.01"
+                   value="{{ c.fee }}" style="margin-bottom:12px;">
+
+            <button class="btn-primary" type="submit" style="width:100%;">SAVE</button>
+          </form>
+          {% else %}
+          <div style="color:var(--muted);">No coaches set up yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div><!-- /admin-coach -->
 
     <!-- ── Settings ─────────────────────── -->
     <div id="admin-settings" class="sub-panel">

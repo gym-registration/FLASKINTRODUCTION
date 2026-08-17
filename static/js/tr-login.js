@@ -261,6 +261,26 @@ function closeModal(id) {
   if (el) el.classList.remove('open');
 }
 
+/** Open the Terms & Policy modal from registration, and unlock the
+ *  "I agree" checkbox once the member closes it (✕ button or backdrop
+ *  click) so they can't check it without opening the terms first. */
+function openTermsModal() {
+  openModal('terms-modal');
+  const modal = document.getElementById('terms-modal');
+  const checkbox = document.getElementById('reg-terms-check');
+  const hint = document.getElementById('reg-terms-hint');
+  if (!modal) return;
+
+  const observer = new MutationObserver(() => {
+    if (!modal.classList.contains('open')) {
+      if (checkbox) checkbox.disabled = false;
+      if (hint) hint.style.display = 'none';
+      observer.disconnect();
+    }
+  });
+  observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+}
+
 /** Show the "please wait, submitting..." overlay while a slow request
  *  (plan request, payment submission, etc.) is in flight, so a slow
  *  connection doesn't make the page look frozen. Call hideLoadingOverlay()
@@ -444,6 +464,69 @@ function submitProfileUpdate() {
     })
     .catch(() => {
       if (btn) { btn.disabled = false; btn.textContent = 'SAVE CHANGES'; }
+      showToast('Could not reach the server. Please try again.', 'error');
+    });
+}
+
+/** Submit the member self-registration form (used by trmem.html's
+ *  "SUBMIT REGISTRATION" button) — validates client-side, posts to the
+ *  real /register endpoint, then drops the member back on the login
+ *  screen with their email pre-filled. */
+function completeRegistration() {
+  const first_name     = _val('reg-fname');
+  const middle_initial = _val('reg-mi');
+  const last_name      = _val('reg-lname');
+  const extension_name = document.getElementById('reg-ext')?.value || '';
+  const email          = _val('reg-email');
+  const phone          = _val('reg-phone');
+  const birthday       = document.getElementById('reg-bday')?.value || '';
+  const password       = document.getElementById('reg-pass')?.value || '';
+  const confirm        = document.getElementById('reg-confirm')?.value || '';
+  const termsChecked   = document.getElementById('reg-terms-check')?.checked;
+
+  if (!first_name || !last_name || !email || !password) {
+    showToast('Please fill in all required fields.', 'error');
+    return;
+  }
+  if (phone && !/^09\d{9}$/.test(phone)) {
+    showToast('Phone number must start with 09 and be exactly 11 digits.', 'error');
+    return;
+  }
+  if (password.length < 8) {
+    showToast('Password must be at least 8 characters.', 'error');
+    return;
+  }
+  if (password !== confirm) {
+    showToast('Passwords do not match.', 'error');
+    return;
+  }
+  if (!termsChecked) {
+    showToast('Please open and agree to the Terms & Policy before registering.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('reg-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'SUBMITTING...'; }
+
+  fetch('/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ first_name, middle_initial, last_name, extension_name, email, phone, birthday, password })
+  })
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+      if (btn) { btn.disabled = false; btn.textContent = 'SUBMIT REGISTRATION'; }
+      if (!ok || !data.success) {
+        showToast(data.error || 'Registration failed. Please try again.', 'error');
+        return;
+      }
+      showToast(data.message || 'Account created! Sign in to continue.', 'success');
+      const loginEmail = document.getElementById('login-email');
+      if (loginEmail) loginEmail.value = email;
+      goTo('login');
+    })
+    .catch(() => {
+      if (btn) { btn.disabled = false; btn.textContent = 'SUBMIT REGISTRATION'; }
       showToast('Could not reach the server. Please try again.', 'error');
     });
 }
@@ -1075,6 +1158,7 @@ function closeAnnouncementNoticeModal() {
 document.addEventListener('DOMContentLoaded', () => {
   window.openModal     = openModal;
   window.closeModal    = closeModal;
+  window.openTermsModal = openTermsModal;
   window.showToast     = showToast;
   window.showNewAnnouncementNotices = showNewAnnouncementNotices;
   window.closeAnnouncementNoticeModal = closeAnnouncementNoticeModal;
@@ -1083,6 +1167,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.verifyPayment = verifyPayment;
   window.submitChangePassword = submitChangePassword;
   window.submitProfileUpdate  = submitProfileUpdate;
+  window.completeRegistration = completeRegistration;
   window.filterTable   = filterTable;
   window.togglePasswordVisibility = togglePasswordVisibility;
   window.ContentManager = ContentManager;

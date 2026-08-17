@@ -263,9 +263,10 @@
                 <select class="form-input" id="member-renew-coach-name">
                   <option value="">Select coach...</option>
                   {% for c in coaches %}
-                  <option value="{{ c.name }}" {% if c.is_full %}disabled{% endif %}>
+                  <option value="{{ c.name }}" data-fee="{{ c.fee }}" {% if c.is_full %}disabled{% endif %}>
                     {{ c.name }} — {{ c.available_days | join(', ') if c.available_days else 'No days set' }}
                     {% if c.is_full %}(FULL){% else %}({{ c.slots_left }} slot{{ 's' if c.slots_left != 1 else '' }} left){% endif %}
+                    {% if c.fee %} · +₱{{ '{:,.0f}'.format(c.fee) if c.fee == c.fee|int else '{:,.2f}'.format(c.fee) }}{% else %} · Free{% endif %}
                   </option>
                   {% endfor %}
                 </select>
@@ -717,16 +718,54 @@
 </div>
 
 <div class="modal-overlay" id="confirm-plan-modal">
-  <div class="modal" style="max-width:400px;">
+  <div class="modal" style="max-width:420px;">
     <button class="modal-close" onclick="cancelPlanRequest()">✕</button>
     <div class="modal-title" style="text-align:center;">CONFIRM YOUR REQUEST</div>
-    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
-      Are you sure you want to request the
-      <strong id="confirm-plan-name" style="color:var(--red);">MONTHLY</strong>
-      plan (<span id="confirm-plan-price">₱900</span>), starting
-      <strong id="confirm-plan-date">—</strong>?
+    <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.6;margin:10px 0 16px;">
+      Review your invoice below, then confirm.
     </div>
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+
+    <div style="background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:14px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Plan</span>
+        <strong id="confirm-plan-name" style="color:var(--red);">MONTHLY</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Regular Price</span>
+        <span id="confirm-plan-regular-price">₱900</span>
+      </div>
+      <div id="confirm-plan-discount-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--green);">Student Discount</span>
+        <span id="confirm-plan-discount-amount" style="color:var(--green);">−₱0</span>
+      </div>
+      <div id="confirm-plan-coach-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Coach</span>
+        <span id="confirm-plan-coach-name" style="text-align:right;">—</span>
+      </div>
+      <div id="confirm-plan-coach-fee-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Coach Fee</span>
+        <span id="confirm-plan-coach-fee">₱0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Start Date</span>
+        <strong id="confirm-plan-date">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Expires</span>
+        <strong id="confirm-plan-end-date">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;margin-top:8px;border-top:1px solid var(--border);">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;color:var(--white);">TOTAL TO PAY</span>
+        <span id="confirm-plan-total" style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--red);">₱900</span>
+      </div>
+    </div>
+
+
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin:8px 0 0;line-height:1.6;">
+      Payment is completed in the Payment tab after staff/admin approve this request.
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:16px;">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="cancelPlanRequest()">NO, GO BACK</button>
       <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="confirmPlanRequest()">YES, REQUEST IT</button>
     </div>
@@ -1141,9 +1180,10 @@
                 <select class="form-input" id="member-renew-coach-name">
                   <option value="">Select coach...</option>
                   {% for c in coaches %}
-                  <option value="{{ c.name }}" {% if c.is_full %}disabled{% endif %}>
+                  <option value="{{ c.name }}" data-fee="{{ c.fee }}" {% if c.is_full %}disabled{% endif %}>
                     {{ c.name }} — {{ c.available_days | join(', ') if c.available_days else 'No days set' }}
                     {% if c.is_full %}(FULL){% else %}({{ c.slots_left }} slot{{ 's' if c.slots_left != 1 else '' }} left){% endif %}
+                    {% if c.fee %} · +₱{{ '{:,.0f}'.format(c.fee) if c.fee == c.fee|int else '{:,.2f}'.format(c.fee) }}{% else %} · Free{% endif %}
                   </option>
                   {% endfor %}
                 </select>
@@ -1595,16 +1635,54 @@
 </div>
 
 <div class="modal-overlay" id="confirm-plan-modal">
-  <div class="modal" style="max-width:400px;">
+  <div class="modal" style="max-width:420px;">
     <button class="modal-close" onclick="cancelPlanRequest()">✕</button>
     <div class="modal-title" style="text-align:center;">CONFIRM YOUR REQUEST</div>
-    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
-      Are you sure you want to request the
-      <strong id="confirm-plan-name" style="color:var(--red);">MONTHLY</strong>
-      plan (<span id="confirm-plan-price">₱900</span>), starting
-      <strong id="confirm-plan-date">—</strong>?
+    <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.6;margin:10px 0 16px;">
+      Review your invoice below, then confirm.
     </div>
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+
+    <div style="background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:14px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Plan</span>
+        <strong id="confirm-plan-name" style="color:var(--red);">MONTHLY</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Regular Price</span>
+        <span id="confirm-plan-regular-price">₱900</span>
+      </div>
+      <div id="confirm-plan-discount-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--green);">Student Discount</span>
+        <span id="confirm-plan-discount-amount" style="color:var(--green);">−₱0</span>
+      </div>
+      <div id="confirm-plan-coach-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Coach</span>
+        <span id="confirm-plan-coach-name" style="text-align:right;">—</span>
+      </div>
+      <div id="confirm-plan-coach-fee-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Coach Fee</span>
+        <span id="confirm-plan-coach-fee">₱0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Start Date</span>
+        <strong id="confirm-plan-date">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Expires</span>
+        <strong id="confirm-plan-end-date">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;margin-top:8px;border-top:1px solid var(--border);">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;color:var(--white);">TOTAL TO PAY</span>
+        <span id="confirm-plan-total" style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--red);">₱900</span>
+      </div>
+    </div>
+
+
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin:8px 0 0;line-height:1.6;">
+      Payment is completed in the Payment tab after staff/admin approve this request.
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:16px;">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="cancelPlanRequest()">NO, GO BACK</button>
       <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="confirmPlanRequest()">YES, REQUEST IT</button>
     </div>
@@ -2020,9 +2098,10 @@
                 <select class="form-input" id="member-renew-coach-name">
                   <option value="">Select coach...</option>
                   {% for c in coaches %}
-                  <option value="{{ c.name }}" {% if c.is_full %}disabled{% endif %}>
+                  <option value="{{ c.name }}" data-fee="{{ c.fee }}" {% if c.is_full %}disabled{% endif %}>
                     {{ c.name }} — {{ c.available_days | join(', ') if c.available_days else 'No days set' }}
                     {% if c.is_full %}(FULL){% else %}({{ c.slots_left }} slot{{ 's' if c.slots_left != 1 else '' }} left){% endif %}
+                    {% if c.fee %} · +₱{{ '{:,.0f}'.format(c.fee) if c.fee == c.fee|int else '{:,.2f}'.format(c.fee) }}{% else %} · Free{% endif %}
                   </option>
                   {% endfor %}
                 </select>
@@ -2474,16 +2553,54 @@
 </div>
 
 <div class="modal-overlay" id="confirm-plan-modal">
-  <div class="modal" style="max-width:400px;">
+  <div class="modal" style="max-width:420px;">
     <button class="modal-close" onclick="cancelPlanRequest()">✕</button>
     <div class="modal-title" style="text-align:center;">CONFIRM YOUR REQUEST</div>
-    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
-      Are you sure you want to request the
-      <strong id="confirm-plan-name" style="color:var(--red);">MONTHLY</strong>
-      plan (<span id="confirm-plan-price">₱900</span>), starting
-      <strong id="confirm-plan-date">—</strong>?
+    <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.6;margin:10px 0 16px;">
+      Review your invoice below, then confirm.
     </div>
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+
+    <div style="background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:14px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Plan</span>
+        <strong id="confirm-plan-name" style="color:var(--red);">MONTHLY</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Regular Price</span>
+        <span id="confirm-plan-regular-price">₱900</span>
+      </div>
+      <div id="confirm-plan-discount-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--green);">Student Discount</span>
+        <span id="confirm-plan-discount-amount" style="color:var(--green);">−₱0</span>
+      </div>
+      <div id="confirm-plan-coach-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Coach</span>
+        <span id="confirm-plan-coach-name" style="text-align:right;">—</span>
+      </div>
+      <div id="confirm-plan-coach-fee-row" style="display:none;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Coach Fee</span>
+        <span id="confirm-plan-coach-fee">₱0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Start Date</span>
+        <strong id="confirm-plan-date">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;">
+        <span style="color:var(--muted);">Expires</span>
+        <strong id="confirm-plan-end-date">—</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;margin-top:8px;border-top:1px solid var(--border);">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;color:var(--white);">TOTAL TO PAY</span>
+        <span id="confirm-plan-total" style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--red);">₱900</span>
+      </div>
+    </div>
+
+
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin:8px 0 0;line-height:1.6;">
+      Payment is completed in the Payment tab after staff/admin approve this request.
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:16px;">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="cancelPlanRequest()">NO, GO BACK</button>
       <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="confirmPlanRequest()">YES, REQUEST IT</button>
     </div>

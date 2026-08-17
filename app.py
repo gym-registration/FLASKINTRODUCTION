@@ -113,6 +113,24 @@ def _plan_amount(plan, is_student):
     return plan.price if plan else 0.0
 
 
+def _coach_fee(coach_name):
+    """The coach fee to add on top of the plan price, looked up by name.
+    Staff/admin set this per-coach from their dashboards. Returns 0 if no
+    coach was requested or the named coach no longer exists."""
+    if not coach_name:
+        return 0.0
+    coach = Coach.query.filter_by(name=coach_name).first()
+    return float(coach.fee) if coach else 0.0
+
+
+def _payment_total(plan, is_student, coach_name=None):
+    """Full amount a member owes: the (student-adjusted) plan price plus
+    the selected coach's fee, if any. This is the single source of truth
+    for what gets charged/displayed everywhere a plan + coach combination
+    is priced."""
+    return _plan_amount(plan, is_student) + _coach_fee(coach_name)
+
+
 def _manila_day_bounds_utc(day):
     """Given a Philippines calendar date, return the (start, end) naive UTC
     datetimes bounding that local day — for filtering DB columns that are
@@ -369,6 +387,7 @@ class Coach(db.Model):
     name           = db.Column(db.String(60), nullable=False, unique=True)
     available_days = db.Column(db.String(40), nullable=False, default='')  # e.g. "Mon,Wed,Fri"
     max_members    = db.Column(db.Integer, nullable=False, default=10)
+    fee            = db.Column(db.Numeric(10, 2), nullable=False, default=0)  # added on top of the plan price when a member picks this coach
     is_active      = db.Column(db.Boolean, nullable=False, default=True)
     updated_at     = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc),
                                onupdate=lambda: datetime.now(timezone.utc))
@@ -1731,7 +1750,7 @@ def admin_verify_payment(payment_id):
         if 'is_student' in data:
             confirmed_student = (data.get('is_student') or '').strip().lower() in ('1', 'true', 'yes')
             payment.is_student = confirmed_student
-            payment.amount     = _plan_amount(payment.plan, confirmed_student)
+            payment.amount     = _payment_total(payment.plan, confirmed_student, payment.coach_name)
 
         payment.status = 'approved'
         payment.method = 'Pending — choose payment method'
@@ -1936,8 +1955,6 @@ def member_submit_payment():
     if plan is None:
         return jsonify(success=False, error='Selected plan is not available.'), 400
 
-    payment_amount = _plan_amount(plan, is_student)
-
     if wants_coach:
         coach = Coach.query.filter_by(name=coach_name, is_active=True).first()
         if coach is None:
@@ -1947,6 +1964,8 @@ def member_submit_payment():
             return jsonify(success=False, error=f'{coach.name} is currently at full capacity. Please choose another coach.'), 409
     else:
         coach_name = None
+
+    payment_amount = _payment_total(plan, is_student, coach_name)
 
     # ── Student ID proof (required only if the member says they're a student) ──
     student_id_relative_path = None
@@ -2167,7 +2186,7 @@ def staff_record_payment():
     )
     if existing_request is not None:
         existing_request.plan_id = plan.id
-        existing_request.amount = _plan_amount(plan, existing_request.is_student)
+        existing_request.amount = _payment_total(plan, existing_request.is_student, existing_request.coach_name)
         existing_request.method = method
         existing_request.status = 'verified'
         existing_request.recorded_by_id = session.get('user_id')
@@ -2254,6 +2273,10 @@ def staff_update_coach():
     if max_members is None or max_members < 1:
         return jsonify(success=False, error='Capacity must be at least 1 member.'), 400
 
+    fee = request.form.get('fee', type=float)
+    if fee is None or fee < 0:
+        return jsonify(success=False, error='Coach fee must be 0 or a positive amount.'), 400
+
     current_occupancy = _get_coach_occupancy().get(coach.name, 0)
     if max_members < current_occupancy:
         return jsonify(
@@ -2264,9 +2287,10 @@ def staff_update_coach():
 
     coach.available_days = ','.join(days)
     coach.max_members = max_members
+    coach.fee = fee
     db.session.commit()
 
-    return jsonify(success=True, message=f"{coach.name}'s availability updated.")
+    return jsonify(success=True, message=f"{coach.name}'s availability and fee updated.")
 
 
 @app.route('/staff/checkin', methods=['POST'])
@@ -3649,6 +3673,7 @@ def _get_coaches_data():
         'name':           c.name,
         'available_days': c.available_days_list,
         'max_members':    c.max_members,
+        'fee':            float(c.fee),
         'is_active':      c.is_active,
         'current_members': occupancy.get(c.name, 0),
         'slots_left':     max(c.max_members - occupancy.get(c.name, 0), 0),
@@ -3781,6 +3806,8 @@ def admin():
     # manage/unpublish/delete them, not just the ones currently live.
     announcements = Announcement.query.order_by(Announcement.created_at.desc()).all()
 
+    coaches_data = _get_coaches_data()
+
     return render_template(
         'admin-dashboard.html',
         members=members,
@@ -3792,6 +3819,8 @@ def admin():
         announcements=announcements,
         current_user=User.query.get(session['user_id']),
         gcash_settings=_get_gym_settings(),
+        coaches=coaches_data,
+        coach_days=VALID_COACH_DAYS,
     )
 
 
@@ -3909,6 +3938,7 @@ def _run_startup_migrations():
         ('gym_equipment',  'icon',     "ALTER TABLE gym_equipment ADD COLUMN icon VARCHAR(8) NULL"),
         ('gym_equipment',  'is_facility', "ALTER TABLE gym_equipment ADD COLUMN is_facility TINYINT(1) NOT NULL DEFAULT 0"),
         ('users', 'last_seen_announcements_at', "ALTER TABLE users ADD COLUMN last_seen_announcements_at DATETIME NULL"),
+        ('coaches', 'fee', "ALTER TABLE coaches ADD COLUMN fee DECIMAL(10,2) NOT NULL DEFAULT 0"),
     ]
     with db.engine.connect() as conn:
         for table, column, ddl in migrations:

@@ -271,6 +271,10 @@
             <input class="form-input" type="number" name="max_members" min="1"
                    value="{{ c.max_members }}" style="margin-bottom:12px;">
 
+            <label class="form-label" style="font-size:12px;">Coach Fee (₱, added on top of the plan price)</label>
+            <input class="form-input" type="number" name="fee" min="0" step="0.01"
+                   value="{{ c.fee }}" style="margin-bottom:12px;">
+
             <button class="btn-primary" type="submit" style="width:100%;">SAVE</button>
           </form>
           {% else %}

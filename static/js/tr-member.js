@@ -470,6 +470,13 @@ const MemberModule = (() => {
     const wantsCoach     = coachToggleEl?.value === 'yes';
     const coachNameEl    = document.getElementById('member-renew-coach-name');
     const coachName      = coachNameEl?.value || '';
+    // Fee is read off the selected <option>'s data-fee attribute (rendered
+    // server-side from the Coach's editable fee) so the invoice always
+    // matches what staff/admin configured — no separate lookup table to
+    // keep in sync on the client.
+    const coachFee       = wantsCoach && coachNameEl?.selectedOptions?.[0]
+      ? parseFloat(coachNameEl.selectedOptions[0].dataset.fee || '0')
+      : 0;
 
     if (!selectedPlan) { showToast('Please select a plan first', 'error'); return; }
     if (!startDate) { showToast('Please choose a start date', 'error'); return; }
@@ -486,7 +493,7 @@ const MemberModule = (() => {
 
     _pendingSubmission = {
       startEl, startDate, todayStr, studentEl, isStudent, studentIdEl, studentIdFile,
-      coachToggleEl, wantsCoach, coachNameEl, coachName,
+      coachToggleEl, wantsCoach, coachNameEl, coachName, coachFee,
     };
     _openConfirmPlanModal();
   }
@@ -515,22 +522,47 @@ const MemberModule = (() => {
     return end;
   }
 
-  /** Fill in and open the "are you sure?" modal for the pending request. */
+  /** Fill in and open the "are you sure?" modal for the pending request —
+   *  rendered as a small itemized invoice so the member sees exactly what
+   *  they'll owe: plan price (with student discount applied) plus the
+   *  selected coach's fee (set by staff/admin, ₱0 if none), before they
+   *  submit the request. */
   function _openConfirmPlanModal() {
     const p = _pendingSubmission;
     if (!p) return;
 
-    const info = PLAN_DATA[selectedPlan];
-    const nameEl  = document.getElementById('confirm-plan-name');
-    const priceEl = document.getElementById('confirm-plan-price');
-    const dateEl  = document.getElementById('confirm-plan-date');
-    const endEl   = document.getElementById('confirm-plan-end-date');
+    const info    = PLAN_DATA[selectedPlan];
+    const regular = info ? info.price : 0;
+    const hasStudentRate = p.isStudent && STUDENT_PRICES[selectedPlan] !== undefined;
+    const planTotal = hasStudentRate ? STUDENT_PRICES[selectedPlan] : regular;
+    const discount  = regular - planTotal;
+    const coachFee  = p.wantsCoach ? (p.coachFee || 0) : 0;
+    const total     = planTotal + coachFee;
 
-    if (nameEl)  nameEl.textContent  = info ? info.name.toUpperCase() : selectedPlan.toUpperCase();
-    if (priceEl) {
-      priceEl.textContent = _planPriceText(selectedPlan, p.isStudent);
-      priceEl.textContent += p.isStudent && STUDENT_PRICES[selectedPlan] !== undefined ? ' (student rate)' : '';
-    }
+    const nameEl         = document.getElementById('confirm-plan-name');
+    const regularPriceEl = document.getElementById('confirm-plan-regular-price');
+    const discountRowEl  = document.getElementById('confirm-plan-discount-row');
+    const discountAmtEl  = document.getElementById('confirm-plan-discount-amount');
+    const coachRowEl     = document.getElementById('confirm-plan-coach-row');
+    const coachNameEl    = document.getElementById('confirm-plan-coach-name');
+    const coachFeeRowEl  = document.getElementById('confirm-plan-coach-fee-row');
+    const coachFeeEl     = document.getElementById('confirm-plan-coach-fee');
+    const dateEl         = document.getElementById('confirm-plan-date');
+    const endEl          = document.getElementById('confirm-plan-end-date');
+    const totalEl        = document.getElementById('confirm-plan-total');
+
+    if (nameEl) nameEl.textContent = info ? info.name.toUpperCase() : selectedPlan.toUpperCase();
+    if (regularPriceEl) regularPriceEl.textContent = _formatPeso(regular);
+
+    if (discountRowEl) discountRowEl.style.display = hasStudentRate ? 'flex' : 'none';
+    if (discountAmtEl) discountAmtEl.textContent = '\u2212' + _formatPeso(discount);
+
+    if (coachRowEl) coachRowEl.style.display = p.wantsCoach ? 'flex' : 'none';
+    if (coachNameEl) coachNameEl.textContent = p.wantsCoach ? p.coachName : '\u2014';
+    if (coachFeeRowEl) coachFeeRowEl.style.display = p.wantsCoach ? 'flex' : 'none';
+    if (coachFeeEl) coachFeeEl.textContent = coachFee > 0 ? ('+' + _formatPeso(coachFee)) : 'Free';
+
+    if (totalEl) totalEl.textContent = _formatPeso(total);
 
     const start = new Date(p.startDate + 'T00:00:00');
     if (dateEl) {

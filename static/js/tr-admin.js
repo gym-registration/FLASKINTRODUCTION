@@ -862,12 +862,41 @@ const AdminModule = (() => {
       });
   }
 
+  /** Save a coach's available days, capacity, and fee from the admin
+   *  Coach tab. Called as the onsubmit handler of each coach card's form —
+   *  posts to the same /staff/coach/update endpoint staff uses (it accepts
+   *  either role), so both dashboards stay in sync automatically. */
+  function submitCoachUpdate(event) {
+    event.preventDefault();
+    const form = event.target;
+    const btn  = form.querySelector('button[type="submit"]');
+    const originalLabel = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+
+    fetch('/staff/coach/update', { method: 'POST', body: new FormData(form) })
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        if (!ok || !data.success) {
+          showToast(data.error || 'Could not update coach.', 'error');
+          return;
+        }
+        showToast(data.message || 'Coach updated.', 'success');
+        setTimeout(() => window.location.reload(), 700);
+      })
+      .catch(() => {
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        showToast('Could not reach the server. Please try again.', 'error');
+      });
+    return false;
+  }
+
   return {
     init, tab, addMember, openEditMemberModal, saveEditMember, deleteMemberRow,
     generateAnalyticsReport, refreshCurrentReport, exportReportPDF, clearReportDateRange,
     viewPaymentProof, filterMembersByStatus, filterMembersTable,
     publishAnnouncement, confirmPublishAnnouncement, openEditAnnouncementModal, saveEditAnnouncement,
-    toggleAnnouncement, deleteAnnouncement, submitGcashSettings, confirmGcashSettings
+    toggleAnnouncement, deleteAnnouncement, submitGcashSettings, confirmGcashSettings, submitCoachUpdate
   };
 })();
 
