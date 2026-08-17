@@ -198,30 +198,52 @@ const StaffModule = (() => {
 
   /** Check a member in via the given input field's id, or a raw identifier */
   /** Save a coach's available days + max member capacity from the Coach tab.
-   *  Called as the onsubmit handler of each coach card's form. */
+   *  Called as the onsubmit handler of each coach card's form.
+   *
+   *  Flow: SAVE opens a "are you sure?" confirm modal (submitCoachUpdate);
+   *  clicking YES there (confirmCoachUpdate) actually posts the change and,
+   *  on success, shows a "successfully saved" modal instead of just a toast. */
+  let pendingCoachForm = null;
+
   function submitCoachUpdate(event) {
     event.preventDefault();
-    const form = event.target;
-    const btn  = form.querySelector('button[type="submit"]');
-    const originalLabel = btn ? btn.textContent : null;
-    if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+    pendingCoachForm = event.target;
+    openModal('confirm-coach-save-modal');
+    return false;
+  }
+
+  function confirmCoachUpdate() {
+    const form = pendingCoachForm;
+    if (!form) { closeModal('confirm-coach-save-modal'); return; }
+
+    const modalBtn = document.getElementById('confirm-coach-save-btn');
+    if (modalBtn) { modalBtn.disabled = true; modalBtn.textContent = 'SAVING...'; }
 
     fetch('/staff/coach/update', { method: 'POST', body: new FormData(form) })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
-        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        closeModal('confirm-coach-save-modal');
         if (!ok || !data.success) {
           showToast(data.error || 'Could not update coach.', 'error');
           return;
         }
-        showToast(data.message || 'Coach updated.', 'success');
-        setTimeout(() => window.location.reload(), 700);
+        openModal('coach-save-success-modal');
       })
       .catch(() => {
-        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        closeModal('confirm-coach-save-modal');
         showToast('Could not reach the server. Please try again.', 'error');
+      })
+      .finally(() => {
+        if (modalBtn) { modalBtn.disabled = false; modalBtn.textContent = 'YES'; }
+        pendingCoachForm = null;
       });
-    return false;
+  }
+
+  /** Closes the coach "successfully saved" modal, then reloads so the Coach
+   *  tab reflects the freshly saved values (occupancy badges, etc). */
+  function closeCoachSaveSuccessModal() {
+    closeModal('coach-save-success-modal');
+    window.location.reload();
   }
 
   function checkInMember(idOrValue) {
@@ -650,7 +672,7 @@ const StaffModule = (() => {
     });
   }
 
-  return { init, tab, promptRecordPayment, confirmRecordPayment, cancelRecordPayment, closePaymentRecordedModal, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput, generateReport, submitCoachUpdate,
+  return { init, tab, promptRecordPayment, confirmRecordPayment, cancelRecordPayment, closePaymentRecordedModal, checkInMember, checkOutMember, filterCheckinTable, filterMembersByStatus, filterMembersTable, viewPaymentProof, onPayMemberInput, generateReport, submitCoachUpdate, confirmCoachUpdate, closeCoachSaveSuccessModal,
            generateStaffAnalyticsReport, clearStaffReportDateRange, refreshStaffReport, exportStaffReportPDF };
 })();
 
@@ -677,6 +699,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.onPayMemberInput      = (value) => StaffModule.onPayMemberInput(value);
   window.generateReport        = (reportType) => StaffModule.generateReport(reportType);
   window.submitCoachUpdate     = (event) => StaffModule.submitCoachUpdate(event);
+  window.confirmCoachUpdate    = () => StaffModule.confirmCoachUpdate();
+  window.closeCoachSaveSuccessModal = () => StaffModule.closeCoachSaveSuccessModal();
   window.generateStaffAnalyticsReport = (type) => StaffModule.generateStaffAnalyticsReport(type);
   window.clearStaffReportDateRange    = () => StaffModule.clearStaffReportDateRange();
   window.refreshStaffReport           = () => StaffModule.refreshStaffReport();

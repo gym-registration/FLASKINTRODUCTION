@@ -637,6 +637,10 @@ CATEGORY_ICONS = {
     'boxing': '🥊', 'strengthening': '💪', 'cardio zone': '🏃', 'weight loss': '🔥',
     'functional training': '🤸', 'coaching': '🧑‍🏫', 'membership perks': '🎁',
     'facilities': '🏢', 'classes': '📅', 'general': '🛎️',
+    # Equipment/Machine categories (staff & admin "Category" picker)
+    'cardio equipment': '🏃', 'strength machine': '🏋️', 'free weights': '🏋️',
+    'strength equipment': '💪', 'body weight equipments': '🤸',
+    'fitness accessories': '🪢', 'recovery equipment': '🧘',
 }
 
 
@@ -2575,6 +2579,14 @@ def member():
                 elif latest_payment_row.status == 'cancelled':
                     payment_status = 'Cancelled'
 
+            # Coach info (if any) comes from this member's most recent payment
+            # record — the same source used for payment_status above — so the
+            # member sees the exact coach + fee that staff/admin set and that
+            # was actually charged, not a stale/default value.
+            plan_wants_coach = bool(latest_payment_row and latest_payment_row.wants_coach and latest_payment_row.coach_name)
+            plan_coach_name  = latest_payment_row.coach_name if plan_wants_coach else None
+            plan_coach_fee   = _coach_fee(latest_payment_row.coach_name) if plan_wants_coach else 0.0
+
             current_plan = {
                 'name': plan_obj.name,
                 'price': plan_obj.price,
@@ -2586,6 +2598,9 @@ def member():
                 'percent_used': percent_used,
                 'status': plan_status,
                 'payment_status': payment_status,
+                'wants_coach': plan_wants_coach,
+                'coach_name': plan_coach_name,
+                'coach_fee': plan_coach_fee,
             }
 
     # ── Attendance (current month) ──

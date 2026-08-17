@@ -809,6 +809,36 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="confirm-coach-save-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closeModal('confirm-coach-save-modal')">✕</button>
+    <div class="modal-title" style="text-align:center;">CONFIRM SAVE</div>
+    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 20px;">
+      Are you sure you want to save this coach's changes?
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="closeModal('confirm-coach-save-modal')">NO</button>
+      <button class="btn btn-red" id="confirm-coach-save-btn" style="width:100%;justify-content:center;" onclick="confirmCoachUpdate()">YES</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="coach-save-success-modal">
+  <div class="modal" style="max-width:400px;">
+    <button class="modal-close" onclick="closeCoachSaveSuccessModal()">✕</button>
+    <div style="display:flex;justify-content:center;margin-bottom:14px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);display:flex;align-items:center;justify-content:center;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+    <div class="modal-title" style="text-align:center;">SUCCESS</div>
+    <div style="font-size:14px;color:var(--white);text-align:center;line-height:1.7;margin:12px 0 22px;">
+      Coach details successfully saved.
+    </div>
+    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closeCoachSaveSuccessModal()">OK</button>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 

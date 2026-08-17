@@ -915,7 +915,7 @@ const ContentManager = (() => {
 
   // ── Category suggestions + icon quick-pick (services & equipment) ──
   const CATEGORY_SUGGESTIONS = {
-    machines:  ['Boxing', 'Strengthening', 'Cardio Zone', 'Weight Loss', 'Functional Training', 'General'],
+    machines:  ['Cardio Equipment', 'Strength Machine', 'Free Weights', 'Strength Equipment', 'Body Weight Equipments', 'Functional Training', 'Fitness Accessories', 'Recovery Equipment'],
     services:  ['Boxing', 'Strengthening', 'Cardio Zone', 'Weight Loss', 'Coaching', 'Membership Perks', 'Facilities', 'Classes', 'General'],
     facilities: ['Weight Area', 'Cardio Zone', 'Reception', 'Locker Room', 'Boxing Area', 'Functional Training', 'General'],
   };
@@ -924,7 +924,7 @@ const ContentManager = (() => {
     services:   ['🥊', '💪', '🔥', '🏃', '🛎️', '🧑‍🏫', '🥤', '🚿', '🅿️', '📅', '🩺'],
     facilities: ['🏢', '🚪', '🏋️', '🧘', '🚿', '🅿️', '🛎️', '🔥'],
   };
-  let realCategoriesCache = null; // categories actually in use, fetched from the server
+  let realCategoriesCache = {}; // per-type ({machines, services, facilities}) categories actually in use, fetched from the server
 
   function _refreshIconPickList(type) {
     const datalist = document.getElementById('cf-category-list');
@@ -932,7 +932,9 @@ const ContentManager = (() => {
       // Show real, already-used categories first (so Services and
       // Equipment stay spelled identically and keep grouping together on
       // the member dashboard), then fall back to curated suggestions.
-      const used = realCategoriesCache || [];
+      // Fetched per-type so a Machines-only category never leaks into the
+      // Services/Facilities pickers, and vice versa.
+      const used = realCategoriesCache[type] || [];
       const suggested = CATEGORY_SUGGESTIONS[type] || [];
       const merged = [...used];
       suggested.forEach(c => { if (!merged.some(m => m.toLowerCase() === c.toLowerCase())) merged.push(c); });
@@ -945,12 +947,12 @@ const ContentManager = (() => {
         `<button type="button" class="icon-pick-btn" onclick="ContentManager.pickIcon('${i}')">${i}</button>`
       ).join('');
     }
-    if (realCategoriesCache === null) {
-      fetch('/api/content/categories')
+    if (realCategoriesCache[type] === undefined) {
+      fetch(`/api/content/categories?type=${encodeURIComponent(type)}`)
         .then(res => res.json())
         .then(data => {
           if (data.success) {
-            realCategoriesCache = data.categories;
+            realCategoriesCache[type] = data.categories;
             _refreshIconPickList(type); // re-render datalist now that real categories are in
           }
         })
@@ -1054,7 +1056,7 @@ const ContentManager = (() => {
         if (!ok || !data.success) { showToast(data.error || 'Could not save.', 'error'); return; }
         showToast(data.message || 'Saved.', 'success');
         closeModal('content-form-modal');
-        if (type !== 'plans') realCategoriesCache = null; // pick up any newly-typed category next time the form opens
+        if (type !== 'plans') delete realCategoriesCache[type]; // pick up any newly-typed category next time this type's form opens
         refresh(type);
       })
       .catch(() => showToast('Could not reach the server.', 'error'));

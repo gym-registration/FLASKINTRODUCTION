@@ -865,30 +865,52 @@ const AdminModule = (() => {
   /** Save a coach's available days, capacity, and fee from the admin
    *  Coach tab. Called as the onsubmit handler of each coach card's form —
    *  posts to the same /staff/coach/update endpoint staff uses (it accepts
-   *  either role), so both dashboards stay in sync automatically. */
+   *  either role), so both dashboards stay in sync automatically.
+   *
+   *  Flow: SAVE opens a "are you sure?" confirm modal (submitCoachUpdate);
+   *  clicking YES there (confirmCoachUpdate) actually posts the change and,
+   *  on success, shows a "successfully saved" modal instead of just a toast. */
+  let pendingCoachForm = null;
+
   function submitCoachUpdate(event) {
     event.preventDefault();
-    const form = event.target;
-    const btn  = form.querySelector('button[type="submit"]');
-    const originalLabel = btn ? btn.textContent : null;
-    if (btn) { btn.disabled = true; btn.textContent = 'SAVING...'; }
+    pendingCoachForm = event.target;
+    openModal('confirm-coach-save-modal');
+    return false;
+  }
+
+  function confirmCoachUpdate() {
+    const form = pendingCoachForm;
+    if (!form) { closeModal('confirm-coach-save-modal'); return; }
+
+    const modalBtn = document.getElementById('confirm-coach-save-btn');
+    if (modalBtn) { modalBtn.disabled = true; modalBtn.textContent = 'SAVING...'; }
 
     fetch('/staff/coach/update', { method: 'POST', body: new FormData(form) })
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
-        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        closeModal('confirm-coach-save-modal');
         if (!ok || !data.success) {
           showToast(data.error || 'Could not update coach.', 'error');
           return;
         }
-        showToast(data.message || 'Coach updated.', 'success');
-        setTimeout(() => window.location.reload(), 700);
+        openModal('coach-save-success-modal');
       })
       .catch(() => {
-        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        closeModal('confirm-coach-save-modal');
         showToast('Could not reach the server. Please try again.', 'error');
+      })
+      .finally(() => {
+        if (modalBtn) { modalBtn.disabled = false; modalBtn.textContent = 'YES'; }
+        pendingCoachForm = null;
       });
-    return false;
+  }
+
+  /** Closes the coach "successfully saved" modal, then reloads so the Coach
+   *  tab reflects the freshly saved values (occupancy badges, etc). */
+  function closeCoachSaveSuccessModal() {
+    closeModal('coach-save-success-modal');
+    window.location.reload();
   }
 
   return {
@@ -896,7 +918,8 @@ const AdminModule = (() => {
     generateAnalyticsReport, refreshCurrentReport, exportReportPDF, clearReportDateRange,
     viewPaymentProof, filterMembersByStatus, filterMembersTable,
     publishAnnouncement, confirmPublishAnnouncement, openEditAnnouncementModal, saveEditAnnouncement,
-    toggleAnnouncement, deleteAnnouncement, submitGcashSettings, confirmGcashSettings, submitCoachUpdate
+    toggleAnnouncement, deleteAnnouncement, submitGcashSettings, confirmGcashSettings,
+    submitCoachUpdate, confirmCoachUpdate, closeCoachSaveSuccessModal
   };
 })();
 
@@ -929,4 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.deleteAnnouncement      = AdminModule.deleteAnnouncement;
   window.submitGcashSettings     = AdminModule.submitGcashSettings;
   window.confirmGcashSettings    = AdminModule.confirmGcashSettings;
+  window.submitCoachUpdate       = AdminModule.submitCoachUpdate;
+  window.confirmCoachUpdate      = AdminModule.confirmCoachUpdate;
+  window.closeCoachSaveSuccessModal = AdminModule.closeCoachSaveSuccessModal;
 });
